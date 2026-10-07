@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14231A">
+  <title>{% block title %}Tendril{% endblock %}</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <span class="brand">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19C5 10 10 5 19 5c0 9-5 14-14 14z" fill="currentColor"/><path d="M6 18l8-8" stroke="#14231A" stroke-width="1.6" stroke-linecap="round"/></svg>
+        Tendril
+      </span>
+      {% block top_right %}{% endblock %}
+    </header>
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

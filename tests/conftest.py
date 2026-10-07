@@ -27,6 +27,22 @@ async def session(isolated_settings):
 
 
 @pytest.fixture
+def app():
+    from app.main import create_app
+
+    return create_app()
+
+
+@pytest.fixture
+async def api(app, session):
+    """Async HTTP client sharing the event loop and database with the `session` fixture."""
+    from httpx import ASGITransport, AsyncClient
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+        yield http
+
+
+@pytest.fixture
 def client():
     from app.main import create_app
 

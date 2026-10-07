@@ -69,13 +69,13 @@ async def test_fetch_forecast_splits_past_and_upcoming_days():
 
 
 @respx.mock
-async def test_drizzle_on_a_dry_day_shows_as_cloudy():
-    rows = [(34, 25, 6, 0.4, 51), (30, 22, 70, 8.0, 61)]
+async def test_unlikely_rain_shows_as_cloudy():
+    rows = [(34, 25, 6, 0.4, 51), (31, 23, 17, 1.2, 61), (30, 22, 70, 8.0, 61)]
     respx.get(FORECAST_URL).mock(return_value=httpx.Response(200, json=forecast_payload(dt.date(2026, 10, 7), rows)))
 
-    forecast = await fetch_forecast(0, 0, "UTC", days=2, past_days=0)
+    forecast = await fetch_forecast(0, 0, "UTC", days=3, past_days=0)
 
-    assert [d.condition for d in forecast.days] == ["cloudy", "rain"]
+    assert [d.condition for d in forecast.days] == ["cloudy", "cloudy", "rain"]
 
 
 @respx.mock

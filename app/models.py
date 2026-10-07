@@ -39,7 +39,6 @@ class Garden(Base):
     lon: Mapped[float]
     timezone: Mapped[str] = mapped_column(String(64))
     checkin_token: Mapped[str] = mapped_column(String(64), unique=True, default=new_token)
-    last_nudge_on: Mapped[dt.date | None] = mapped_column(Date, default=None)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     plants: Mapped[list["Plant"]] = relationship(

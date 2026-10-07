@@ -53,9 +53,9 @@ async def current_week_plan(session: AsyncSession, garden: Garden, today: dt.dat
 
 
 def _merge_forecast(old: Forecast, new: Forecast) -> Forecast:
-    """Keep the plan's days, updated with any fresher forecast for the same dates."""
-    fresh = {day.date: day for day in new.days}
-    return old.model_copy(update={"days": [fresh.get(day.date, day) for day in old.days]})
+    """The plan's days updated with fresher forecasts, plus any newly forecast days after them."""
+    merged = {day.date: day for day in old.days} | {day.date: day for day in new.days}
+    return old.model_copy(update={"days": sorted(merged.values(), key=lambda day: day.date)})
 
 
 async def _replace_tasks(session: AsyncSession, garden: Garden, days: Sequence[PlanDay]) -> None:
@@ -129,7 +129,9 @@ async def refresh_today(
     stored = Forecast.model_validate(plan.forecast)
     planned = stored.day(today)
     changes = detect_change(planned, current) if planned else ["no forecast for today"]
+    plan.forecast = _merge_forecast(stored, forecast).model_dump(mode="json")
     if not changes:
+        await session.commit()
         return []
 
     days = planner.days_from_json(plan.days)
@@ -140,7 +142,6 @@ async def refresh_today(
 
     others = [day for day in days if day.date != today]
     plan.days = planner.days_to_json(sorted([*others, new_day], key=lambda day: day.date))
-    plan.forecast = _merge_forecast(stored, forecast).model_dump(mode="json")
     await _replace_tasks(session, garden, [new_day])
     await session.commit()
     log.info("Adjusted today's tasks for %s: %s", garden.name, ", ".join(changes))

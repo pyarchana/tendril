@@ -18,6 +18,7 @@ RAIN_SKIP_PROBABILITY = 60  # % above which watering is skipped
 HEAT_TEMP_C = 35.0  # max temperature above which plants need shade
 HEAT_JUMP_C = 4.0  # rise in max temperature that counts as a heat spike
 RAIN_HOUR_PROBABILITY = 50  # % an hour must reach to count as "rain at"
+RAIN_ICON_PROBABILITY = 30  # % below which a rainy weather code is drawn as cloud
 DRY_DAY_MM = 1.0  # less rain than this (and low probability) is a dry day
 
 
@@ -146,8 +147,10 @@ def parse_forecast(payload: dict, past_days: int) -> Forecast:
                 rain_start_hour=rain_starts.get(date),
             )
             # The daily code is the worst moment of the day; a passing drizzle on an
-            # otherwise dry day would show a misleading rain icon.
-            if forecast_day.condition == "rain" and forecast_day.is_dry:
+            # otherwise dry or unlikely-rain day would show a misleading rain icon.
+            if forecast_day.condition == "rain" and (
+                forecast_day.is_dry or forecast_day.rain_probability < RAIN_ICON_PROBABILITY
+            ):
                 forecast_day.condition = "cloudy"
             parsed.append(forecast_day)
         return Forecast(timezone=payload.get("timezone", "UTC"), past_days=parsed[:past_days], days=parsed[past_days:])

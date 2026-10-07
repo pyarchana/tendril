@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Today · Tendril{% endblock %}
+
+{% block head %}
+  <link rel="manifest" href="/today/{{ token }}/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Tendril">
+  <meta name="description" content="{{ view.summary }}">
+{% endblock %}
+
+{% block top_right %}
+  <span class="muted">{{ view.date.strftime('%a') }} {{ view.date.day }} {{ view.date.strftime('%b') }}</span>
+{% endblock %}
+
+{% block content %}
+{% if not view.has_plan %}
+  <section class="card">
+    <h1>Your first plan is on its way</h1>
+    <p class="muted">Tendril plans the week every Sunday at 7 AM and checks the weather each morning. This page fills in after the next run.</p>
+  </section>
+{% else %}
+  {% if updated == "done" %}
+    <p class="notice" role="status">Marked done. Nice work.</p>
+  {% elif updated == "skipped" %}
+    <p class="notice" role="status">Skipped for today. Tendril will plan around it.</p>
+  {% elif view.evening_nudge %}
+    <p class="notice" role="status">Still time for today's tasks, or tap Skip. No pressure.</p>
+  {% endif %}
+
+  <figure class="plan">
+    <img src="/today/{{ token }}/plan.png?v={{ view.image_key }}" width="1080" height="1280"
+         alt="Today's plan. {{ view.summary }}">
+  </figure>
+  <p class="summary">{{ view.summary }}</p>
+
+  {% if view.tasks %}
+  <ul class="tasks">
+    {% for task in view.tasks %}
+    <li class="{{ 'is-settled' if task.status != 'pending' else '' }}">
+      <span class="status {{ task.status }}" role="img" aria-label="{{ task.status }}"></span>
+      <div>
+        <div class="task-plant">{{ task.plant.name }}</div>
+        <div class="task-action">{{ task.action }}</div>
+        {% if task.reason %}<div class="task-reason">{{ task.reason }}</div>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if view.pending %}
+  <div class="actions">
+    <form method="post" action="/t/{{ token }}/done"><button class="primary" type="submit">Done</button></form>
+    <form method="post" action="/t/{{ token }}/skip"><button class="secondary" type="submit">Skip</button></form>
+  </div>
+  {% endif %}
+
+  <a class="button ghost" href="/c/{{ token }}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>
+    Voice note
+  </a>
+  <div class="links">
+    <a href="/today/{{ token }}/plan.png?v={{ view.image_key }}" download="tendril-{{ view.date.isoformat() }}.png">Save as wallpaper</a>
+  </div>
+{% endif %}
+{% endblock %}
