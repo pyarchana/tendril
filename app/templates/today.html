@@ -21,6 +21,9 @@
     <p class="muted">Tendril plans the week every Sunday at 7 AM and checks the weather each morning. This page fills in after the next run.</p>
   </section>
 {% else %}
+  {% if view.plan_note %}
+    <p class="notice" role="status">{{ view.plan_note }}</p>
+  {% endif %}
   {% if updated == "done" %}
     <p class="notice" role="status">Marked done. Nice work.</p>
   {% elif updated == "skipped" %}

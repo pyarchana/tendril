@@ -11,11 +11,12 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import Garden, Task, TaskStatus
+from app.models import CheckIn, Garden, Task, TaskStatus
 from app.schemas import MAX_TASKS_PER_DAY, PlanDay, PlanTask
 from app.services import planner
 from app.services.plans import current_week_plan
 from app.services.render import render_plan_image, save_plan_image, short_label
+from app.services.rules import serious_issues
 from app.services.weather import HEAT_TEMP_C, DayForecast, Forecast, format_hour
 
 EVENING_HOUR = 18
@@ -45,6 +46,7 @@ class TodayView:
     weather: DayForecast | None
     tasks: list[Task]
     upcoming: list[tuple[dt.date, DayForecast | None, PlanDay | None]]
+    plan_note: str | None = None  # set when today's voice note changed the plan
 
     @property
     def date(self) -> dt.date:
@@ -107,7 +109,21 @@ async def load_today(session: AsyncSession, garden: Garden, now: dt.datetime) ->
         weather=forecast.day(today) if forecast else None,
         tasks=tasks,
         upcoming=upcoming,
+        plan_note=await _plan_note(session, garden, today),
     )
+
+
+async def _plan_note(session: AsyncSession, garden: Garden, today: dt.date) -> str | None:
+    check_ins = await session.scalars(
+        select(CheckIn).where(CheckIn.garden_id == garden.id, CheckIn.date == today).order_by(CheckIn.id.desc())
+    )
+    for check_in in check_ins:
+        issues = serious_issues(check_in.facts.get("health_flags", []))
+        if issues:
+            plant = check_in.facts.get("plant")
+            where = f" on {plant}" if plant else ""
+            return f"Plan changed after your voice note: {' and '.join(issues)}{where}."
+    return None
 
 
 def _render_to(view: TodayView, path: Path) -> None:

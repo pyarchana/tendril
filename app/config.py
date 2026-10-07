@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     whisper_model: str = "small"
     whisper_language: Literal["en", "hi", "auto"] = "auto"
+    whisper_timeout: float = 180.0
 
     weather_timeout: float = 10.0
 
@@ -35,8 +36,12 @@ class Settings(BaseSettings):
     def audio_dir(self) -> Path:
         return self.data_dir / "audio"
 
+    @property
+    def models_dir(self) -> Path:
+        return self.data_dir / "models"
+
     def ensure_dirs(self) -> None:
-        for path in (self.data_dir, self.images_dir, self.audio_dir):
+        for path in (self.data_dir, self.images_dir, self.audio_dir, self.models_dir):
             path.mkdir(parents=True, exist_ok=True)
 
 

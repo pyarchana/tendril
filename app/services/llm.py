@@ -2,13 +2,16 @@
 
 import json
 import logging
-from typing import Protocol
+from collections.abc import Callable
+from typing import Protocol, TypeVar
 
 import httpx
 
 from app.config import get_settings
 
 log = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 class LLMError(Exception):
@@ -51,3 +54,24 @@ def parse_json_reply(text: str) -> dict:
     if start == -1 or end < start:
         raise ValueError("reply contains no JSON object")
     return json.loads(text[start : end + 1])
+
+
+async def ask_validated(llm: LLM, messages: list[dict], schema: dict, validate: Callable[[dict], T]) -> T | None:
+    """Two attempts; the second one is told what was wrong with the first."""
+    for attempt in (1, 2):
+        try:
+            reply = await llm.chat_json(messages, schema)
+        except LLMError as exc:
+            log.warning("Model call failed (attempt %d): %s", attempt, exc)
+            continue
+        try:
+            return validate(parse_json_reply(reply))
+        except ValueError as exc:  # includes JSON decode errors and pydantic ValidationError
+            problem = str(exc)[:500]
+            log.info("Model reply invalid (attempt %d): %s", attempt, problem)
+            messages = [
+                *messages,
+                {"role": "assistant", "content": reply},
+                {"role": "user", "content": f"That reply was invalid: {problem}\nReply again with only valid JSON in the required shape."},
+            ]
+    return None

@@ -36,6 +36,20 @@ class WeekPlanReply(BaseModel):
     days: list[PlanDay]
 
 
+class CheckInFacts(BaseModel):
+    """What a voice note says: which plant, what was done, what was seen, any problems."""
+
+    plant: str = Field(default="", max_length=60)
+    done: list[str] = Field(default_factory=list, max_length=10)
+    observations: list[str] = Field(default_factory=list, max_length=10)
+    health_flags: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("done", "observations", "health_flags")
+    @classmethod
+    def _clean_items(cls, items: list[str]) -> list[str]:
+        return [item.strip()[:120] for item in items if item and item.strip()]
+
+
 # Hand-written JSON schemas passed to Ollama's `format` to constrain generation.
 _TASK_SCHEMA = {
     "type": "object",
@@ -58,4 +72,10 @@ WEEK_SCHEMA = {
     "type": "object",
     "properties": {"days": {"type": "array", "items": DAY_SCHEMA}},
     "required": ["days"],
+}
+_STRINGS = {"type": "array", "items": {"type": "string"}}
+FACTS_SCHEMA = {
+    "type": "object",
+    "properties": {"plant": {"type": "string"}, "done": _STRINGS, "observations": _STRINGS, "health_flags": _STRINGS},
+    "required": ["plant", "done", "observations", "health_flags"],
 }

@@ -2,13 +2,12 @@
 
 import datetime as dt
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TypeVar
 
 from app.models import Plant
 from app.schemas import DAY_SCHEMA, WEEK_SCHEMA, PlanDay, PlanTask, WeekPlanReply
-from app.services.llm import LLM, LLMError, OllamaClient, parse_json_reply
+from app.services.llm import LLM, OllamaClient, ask_validated
 from app.services.rules import (
     DayContext,
     day_contexts,
@@ -22,8 +21,6 @@ from app.services.rules import (
 from app.services.weather import Forecast, format_hour
 
 log = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 SYSTEM_PROMPT = (
     "You are Tendril, a calm, practical garden assistant. You plan a few short care tasks per day "
@@ -160,27 +157,6 @@ def _validate_day(data: dict, date: dt.date, plants: Sequence[Plant]) -> PlanDay
     return _with_known_plants(PlanDay.model_validate(data), plants)
 
 
-async def _ask(llm: LLM, messages: list[dict], schema: dict, validate: Callable[[dict], T]) -> T | None:
-    """Two attempts; the second one is told what was wrong with the first."""
-    for attempt in (1, 2):
-        try:
-            reply = await llm.chat_json(messages, schema)
-        except LLMError as exc:
-            log.warning("Model call failed (attempt %d): %s", attempt, exc)
-            continue
-        try:
-            return validate(parse_json_reply(reply))
-        except ValueError as exc:  # includes JSON decode errors and pydantic ValidationError
-            problem = str(exc)[:500]
-            log.info("Model reply invalid (attempt %d): %s", attempt, problem)
-            messages = [
-                *messages,
-                {"role": "assistant", "content": reply},
-                {"role": "user", "content": f"That reply was invalid: {problem}\nReply again with only valid JSON in the required shape."},
-            ]
-    return None
-
-
 async def plan_week(
     plants: Sequence[Plant],
     forecast: Forecast,
@@ -198,7 +174,7 @@ async def plan_week(
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": build_week_prompt(plants, contexts, facts)},
     ]
-    days = await _ask(llm or OllamaClient(), messages, WEEK_SCHEMA, lambda d: _validate_week(d, plan_dates, plants))
+    days = await ask_validated(llm or OllamaClient(), messages, WEEK_SCHEMA, lambda d: _validate_week(d, plan_dates, plants))
     if days is None:
         log.warning("Using the rule-based plan instead of the model")
         return PlanResult(rule_based_plan(plants, forecast, facts, plan_dates), "rules")
@@ -227,7 +203,7 @@ async def adjust_today(
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": build_today_prompt(plants, context, current, changes, facts)},
     ]
-    day = await _ask(llm or OllamaClient(), messages, DAY_SCHEMA, lambda d: _validate_day(d, date, plants))
+    day = await ask_validated(llm or OllamaClient(), messages, DAY_SCHEMA, lambda d: _validate_day(d, date, plants))
     if day is None:
         log.warning("Using the rule-based day instead of the model")
         return PlanResult([fallback_day(context, plants, date.toordinal(), health)], "rules")

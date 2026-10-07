@@ -26,6 +26,23 @@ def forecast(*days: dict, past: tuple[dict, ...] = (WET, WET, WET), start: dt.da
     return Forecast(timezone="Asia/Kolkata", past_days=past_days, days=upcoming)
 
 
+def open_meteo_payload(f: Forecast) -> dict:
+    """The JSON Open-Meteo would return for this forecast (past days first)."""
+    days = [*f.past_days, *f.days]
+    return {
+        "timezone": f.timezone,
+        "daily": {
+            "time": [d.date.isoformat() for d in days],
+            "temperature_2m_max": [d.temp_max for d in days],
+            "temperature_2m_min": [d.temp_min for d in days],
+            "precipitation_probability_max": [d.rain_probability for d in days],
+            "precipitation_sum": [d.rain_mm for d in days],
+            "weather_code": [d.weather_code for d in days],
+        },
+        "hourly": {"time": [], "precipitation_probability": []},
+    }
+
+
 def plants() -> list[Plant]:
     return [
         Plant(id=1, name="Tulsi", species="Ocimum tenuiflorum", location_type=LocationType.terrace, notes=""),

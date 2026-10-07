@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Voice note · Tendril{% endblock %}
+
+{% block top_right %}
+  <a class="muted" href="/today/{{ token }}">Today</a>
+{% endblock %}
+
+{% block content %}
+<section class="checkin">
+  <h1>How did it go?</h1>
+  <p class="muted">Hold the button and tell Tendril what you did or noticed. Up to {{ max_seconds }} seconds, in English or Hindi.</p>
+
+  <div class="recorder">
+    <button id="record" class="record" type="button" aria-describedby="record-hint">
+      <span class="ring" aria-hidden="true"></span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>
+      <span class="record-label">Hold to record</span>
+    </button>
+    <p id="timer" class="timer">0:00 / 0:{{ "%02d" % max_seconds }}</p>
+    <p id="record-hint" class="muted small">For example: “Watered the {{ plants[0].name|lower if plants else "plants" }}, and there are new flowers.”</p>
+  </div>
+
+  <p id="status" class="notice" role="status" hidden></p>
+  <p id="transcript" class="transcript muted" hidden></p>
+
+  <details class="type-instead">
+    <summary>Type instead</summary>
+    <form id="text-form">
+      <label for="note">Your note</label>
+      <textarea id="note" name="text" rows="3" minlength="2" maxlength="500" required></textarea>
+      <button class="secondary" type="submit">Send note</button>
+    </form>
+  </details>
+
+  <a class="button ghost" href="/today/{{ token }}">Back to today</a>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const MAX_MS = {{ max_seconds }} * 1000;
+  const MIN_MS = 700;
+  const token = {{ token|tojson }};
+  const button = document.getElementById("record");
+  const label = button.querySelector(".record-label");
+  const timer = document.getElementById("timer");
+  const statusEl = document.getElementById("status");
+  const transcriptEl = document.getElementById("transcript");
+  let recorder = null, stream = null, chunks = [], startedAt = 0, tick = null;
+  let holding = false, busy = false;
+
+  const clock = ms => `0:${String(Math.floor(ms / 1000)).padStart(2, "0")}`;
+  const show = (message, isError = false) => {
+    statusEl.hidden = false;
+    statusEl.textContent = message;
+    statusEl.classList.toggle("error", isError);
+  };
+
+  function pickType() {
+    for (const type of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"]) {
+      if (MediaRecorder.isTypeSupported(type)) return type;
+    }
+    return "";
+  }
+
+  async function start() {
+    if (busy || recorder) return;
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      show("Voice notes need a secure (https) page and a browser that can record audio. You can type instead below.", true);
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      show("Tendril needs microphone access to hear your note. You can type instead below.", true);
+      return;
+    }
+    if (!holding) {  // released while the permission prompt was open
+      stream.getTracks().forEach(track => track.stop());
+      show("Microphone ready. Hold the button while you talk.");
+      return;
+    }
+    const type = pickType();
+    recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    chunks = [];
+    recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+    recorder.onstop = finish;
+    recorder.start();
+    startedAt = Date.now();
+    statusEl.hidden = true;
+    button.classList.add("recording");
+    label.textContent = "Release to send";
+    tick = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      timer.textContent = `${clock(Math.min(elapsed, MAX_MS))} / ${clock(MAX_MS)}`;
+      button.style.setProperty("--progress", Math.min(1, elapsed / MAX_MS));
+      if (elapsed >= MAX_MS) stop();
+    }, 100);
+  }
+
+  function stop() {
+    holding = false;
+    if (!recorder || recorder.state === "inactive") return;
+    clearInterval(tick);
+    recorder.stop();
+    stream.getTracks().forEach(track => track.stop());
+  }
+
+  async function finish() {
+    const elapsed = Date.now() - startedAt;
+    const type = recorder.mimeType || "audio/webm";
+    recorder = null;
+    button.classList.remove("recording");
+    button.style.setProperty("--progress", 0);
+    label.textContent = "Hold to record";
+    if (elapsed < MIN_MS) {
+      show("Hold the button while you talk.");
+      return;
+    }
+    const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+    const form = new FormData();
+    form.append("audio", new Blob(chunks, { type }), `note.${extension}`);
+    await send(`/c/${token}/audio`, form, "Listening to your note…");
+  }
+
+  async function send(url, body, waiting) {
+    busy = true;
+    button.disabled = true;
+    show(waiting);
+    try {
+      const response = await fetch(url, { method: "POST", body });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        show(typeof data.detail === "string" ? data.detail : "Something went wrong. Please try again.", true);
+        return false;
+      }
+      show(data.message);
+      transcriptEl.hidden = !data.transcript;
+      transcriptEl.textContent = data.transcript ? `“${data.transcript}”` : "";
+      return true;
+    } catch {
+      show("Couldn't reach Tendril. Check your connection and try again.", true);
+      return false;
+    } finally {
+      busy = false;
+      button.disabled = false;
+    }
+  }
+
+  button.addEventListener("pointerdown", event => {
+    event.preventDefault();
+    holding = true;
+    button.setPointerCapture?.(event.pointerId);
+    start();
+  });
+  button.addEventListener("pointerup", stop);
+  button.addEventListener("pointercancel", stop);
+  button.addEventListener("contextmenu", event => event.preventDefault());
+  button.addEventListener("keydown", event => {
+    if ((event.key === " " || event.key === "Enter") && !event.repeat) {
+      event.preventDefault();
+      holding = true;
+      start();
+    }
+  });
+  button.addEventListener("keyup", event => {
+    if (event.key === " " || event.key === "Enter") stop();
+  });
+
+  document.getElementById("text-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    if (await send(`/c/${token}/text`, new FormData(event.target), "Reading your note…")) event.target.reset();
+  });
+})();
+</script>
+{% endblock %}
