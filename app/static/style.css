@@ -75,6 +75,7 @@ button, .button {
 }
 .primary { background: var(--accent); color: var(--bg); }
 .secondary { background: var(--card); color: var(--text); }
+.card .secondary { background: var(--line); }
 .ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
 .button svg, button svg { width: 20px; height: 20px; }
 button:disabled { opacity: 0.6; cursor: default; }
@@ -121,6 +122,31 @@ label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 6px
 .type-instead { margin: 18px 0; }
 .type-instead summary { cursor: pointer; color: var(--muted); }
 .type-instead textarea { resize: vertical; margin-bottom: 10px; }
+
+/* Setup */
+.step {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; margin-right: 6px;
+  border-radius: 50%; background: var(--accent); color: var(--bg); font-size: 15px; vertical-align: 2px;
+}
+.row { display: flex; gap: 8px; }
+.row input { flex: 1; min-width: 0; }
+.row button { width: auto; min-height: 48px; }
+.places, .plant-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+.places form { margin: 0; }
+.place {
+  min-height: 0; padding: 12px 14px; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  background: var(--bg); color: var(--text); border: 1px solid var(--line); font-weight: 600;
+}
+.plant-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.plant-list form { margin: 0; }
+button.link { width: auto; min-height: 0; padding: 6px 0; background: none; color: var(--muted); font-weight: 500; font-size: 14px; text-decoration: underline; }
+.spaced { margin-top: 14px; }
+.qr { width: 220px; max-width: 100%; margin: 6px auto 12px; padding: 10px; background: #fff; border-radius: 18px; }
+.qr svg { display: block; width: 100%; height: auto; }
+.link-line { text-align: center; word-break: break-all; font-size: 14px; }
+.steps { padding-left: 20px; }
+.steps li { margin-bottom: 8px; }
+code { font-size: 0.9em; background: var(--bg); padding: 1px 5px; border-radius: 6px; }
 
 a { color: var(--accent); }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }

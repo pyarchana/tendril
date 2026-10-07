@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Setup · Tendril{% endblock %}
+
+{% block content %}
+<h1>Set up your garden</h1>
+<p class="muted">Three steps. After this, Tendril does the planning and you just glance at your phone.</p>
+
+<section class="card" id="garden">
+  <h2><span class="step">1</span> Where is your garden?</h2>
+  {% if garden %}
+    <p class="current"><strong>{{ garden.name }}</strong><br>
+      <span class="muted small">{{ "%.3f"|format(garden.lat) }}, {{ "%.3f"|format(garden.lon) }} · {{ garden.timezone }}</span></p>
+  {% endif %}
+  <form method="get" action="/setup#garden">
+    <label for="name">Garden name <span class="muted">(optional)</span></label>
+    <input id="name" name="name" value="{{ name or (garden.name if garden else '') }}" maxlength="100" placeholder="Balcony garden">
+    <label for="q">{{ "Move to another city" if garden else "City" }}</label>
+    <div class="row">
+      <input id="q" name="q" value="{{ q }}" placeholder="Search a city, e.g. Pune" minlength="2" required>
+      <button class="secondary" type="submit">Search</button>
+    </div>
+  </form>
+
+  {% if search_error %}
+    <p class="notice error" role="alert">{{ search_error }}</p>
+  {% elif q and not places %}
+    <p class="muted">No places found for “{{ q }}”. Try a nearby larger city.</p>
+  {% endif %}
+
+  {% if places %}
+  <ul class="places" aria-label="Matching places">
+    {% for place in places %}
+    <li>
+      <form method="post" action="/setup/garden">
+        <input type="hidden" name="name" value="{{ name }}">
+        <input type="hidden" name="place" value="{{ place.label }}">
+        <input type="hidden" name="lat" value="{{ place.lat }}">
+        <input type="hidden" name="lon" value="{{ place.lon }}">
+        <input type="hidden" name="timezone" value="{{ place.timezone }}">
+        <button class="place" type="submit">
+          <span>{{ place.label }}</span>
+          <span class="muted small">{{ place.timezone }}</span>
+        </button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<section class="card" id="plants">
+  <h2><span class="step">2</span> Your plants</h2>
+  {% if not garden %}
+    <p class="muted">Choose your city first.</p>
+  {% else %}
+    {% if plants %}
+    <ul class="plant-list">
+      {% for plant in plants %}
+      <li>
+        <div>
+          <strong>{{ plant.name }}</strong>
+          <span class="muted small">{{ plant.location_type }}{% if plant.species %} · {{ plant.species }}{% endif %}</span>
+          {% if plant.notes %}<div class="muted small">{{ plant.notes }}</div>{% endif %}
+        </div>
+        <form method="post" action="/setup/plants/{{ plant.id }}/delete">
+          <button class="link" type="submit" aria-label="Remove {{ plant.name }}">Remove</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+      <p class="muted">No plants yet. Add the ones you look after.</p>
+    {% endif %}
+
+    <form method="post" action="/setup/plants">
+      <label for="plant-name">Plant</label>
+      <input id="plant-name" name="name" maxlength="60" placeholder="Chillies" required>
+      <label for="location_type">Where it grows</label>
+      <select id="location_type" name="location_type">
+        {% for type in location_types %}<option value="{{ type }}">{{ type|capitalize }}</option>{% endfor %}
+      </select>
+      <label for="species">Species <span class="muted">(optional)</span></label>
+      <input id="species" name="species" maxlength="200" placeholder="Capsicum annuum">
+      <label for="notes">Notes <span class="muted">(optional)</span></label>
+      <input id="notes" name="notes" maxlength="500" placeholder="South-facing balcony, fruiting">
+      <button class="primary spaced" type="submit">Add plant</button>
+    </form>
+  {% endif %}
+</section>
+
+<section class="card" id="phone">
+  <h2><span class="step">3</span> Put it on your phone</h2>
+  {% if not garden %}
+    <p class="muted">Your private Today link appears here once the garden is set.</p>
+  {% else %}
+    <div class="qr" role="img" aria-label="QR code for your Today page">{{ qr|safe }}</div>
+    <p class="link-line"><a href="{{ today_url }}">{{ today_url }}</a></p>
+    {% if not phone_reachable %}
+      <p class="notice error">This link uses {{ base_url }}, which your phone can't open. Set <code>PUBLIC_BASE_URL</code> in <code>.env</code> to your server's address.</p>
+    {% endif %}
+    <ol class="steps">
+      <li>Scan the code with your phone's camera and open the link.</li>
+      <li>Android (Chrome): tap <strong>⋮</strong> then <strong>Add to Home screen</strong>. iPhone (Safari): tap <strong>Share</strong> then <strong>Add to Home Screen</strong>.</li>
+      <li>Each morning at {{ morning_hour }}:00 the page shows the day's plan. Tap <strong>Done</strong> or <strong>Skip</strong>, or hold the mic for a voice note.</li>
+      <li>Optional: <strong>Save as wallpaper</strong> puts the day's plan on your lock screen.</li>
+    </ol>
+    <p class="muted small">Keep this link private: anyone with it can see and update your garden. Voice notes need HTTPS.</p>
+
+    {% if planning %}
+      <p class="notice" role="status">Planning the week now. With a local model this takes a minute or two, then the Today page fills in.</p>
+    {% endif %}
+    <form method="post" action="/setup/plan">
+      <button class="secondary" type="submit" {% if not plants %}disabled{% endif %}>
+        {{ "Re-plan this week now" if has_plan else "Plan this week now" }}
+      </button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     weather_timeout: float = 10.0
 
     scheduler_enabled: bool = True
+    morning_hour: int = 7
+    setup_password: str = ""
     log_level: str = "INFO"
 
     @property
