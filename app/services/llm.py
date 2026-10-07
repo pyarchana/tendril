@@ -36,7 +36,8 @@ class OllamaClient:
             "messages": messages,
             "stream": False,
             "format": schema or "json",
-            "options": {"temperature": 0.2},
+            # A week plan is ~350 tokens; the cap stops a runaway reply on a slow CPU.
+            "options": {"temperature": 0.2, "num_predict": 1024},
         }
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -44,8 +45,9 @@ class OllamaClient:
                 response.raise_for_status()
                 return response.json()["message"]["content"]
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-            log.warning("Ollama request failed: %s", exc)
-            raise LLMError(str(exc)) from exc
+            problem = f"{type(exc).__name__}: {exc}".rstrip(": ")  # timeouts have an empty message
+            log.warning("Ollama request failed: %s", problem)
+            raise LLMError(problem) from exc
 
 
 def parse_json_reply(text: str) -> dict:

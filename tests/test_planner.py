@@ -2,7 +2,8 @@ import datetime as dt
 
 from app.schemas import DAY_SCHEMA, WEEK_SCHEMA, PlanTask
 from app.services.llm import LLMError
-from app.services.planner import adjust_today, plan_week
+from app.services.planner import adjust_today, build_week_prompt, plan_week
+from app.services.rules import day_contexts
 from tests.factories import HOT, MILD, RAINY, START, WET, FakeLLM, forecast, plants
 
 D0, D1, D2 = (START + dt.timedelta(days=i) for i in range(3))
@@ -28,7 +29,7 @@ async def test_valid_model_plan_is_used():
     assert [d.date for d in result.days] == [D0, D1, D2]
     assert result.days[0].tasks[0].plant == "Chillies"  # normalised from "chillies"
     assert result.days[1].tasks[0].action == "Harvest top leaves"
-    assert result.days[2].tasks == []
+    assert len(result.days[2].tasks) == 1  # an empty day gets one routine task
     messages, schema = llm.calls[0]
     assert schema == WEEK_SCHEMA
     prompt = messages[-1]["content"]
@@ -99,7 +100,51 @@ async def test_model_watering_on_rainy_day_is_overridden():
 
     assert result.source == "model"
     assert [t.action for t in result.days[0].tasks] == ["Skip watering today"]
-    assert "Must: skip watering today (Chillies)" in llm.calls[0][0][-1]["content"]
+    assert "Needed: skip watering today for Chillies (85% chance of rain from 4 PM)." in llm.calls[0][0][-1]["content"]
+
+
+async def test_reasons_copied_from_the_prompt_are_dropped():
+    copied = task(action="Pinch off side shoots", reason="At most 2 tasks per day; fewer is fine.")
+    llm = FakeLLM(week([copied], [], []))
+    result = await plan_week(plants(), MILD_3, facts=[], llm=llm)
+    assert result.days[0].tasks[0].reason == "Partly cloudy day, up to 30°C."
+
+
+async def test_rule_tasks_take_the_rule_reason():
+    dry = forecast(MILD, MILD, MILD, past=(MILD, MILD, MILD))
+    llm = FakeLLM(week([task(action="Water deeply at the roots", reason="Needed: water deeply")], [], []))
+    result = await plan_week(plants(), dry, facts=[], llm=llm)
+    assert result.days[0].tasks[0].reason == "3 dry days in a row."
+
+
+def test_prompt_shows_an_example_with_a_real_plant_name():
+    prompt = build_week_prompt(plants(), day_contexts(MILD_3), [])
+    assert 'Example of the format for one day:\n{"date": "2026-10-04", "tasks": [{"plant": "Tulsi"' in prompt
+    assert "compact JSON" in prompt
+
+
+async def test_copied_reasons_become_weather_notes():
+    same = "Warm days bring aphids."
+    llm = FakeLLM(week(
+        [task("Tulsi", "Check under leaves for pests", same)],
+        [task("Chillies", "Pinch off side shoots", same)],
+        [task("Tulsi", "Harvest top leaves", "")],
+    ))
+    result = await plan_week(plants(), MILD_3, facts=[], llm=llm)
+    reasons = [day.tasks[0].reason for day in result.days]
+    assert reasons == [same, "Partly cloudy day, up to 30°C.", "Partly cloudy day, up to 30°C."]
+
+
+async def test_rule_tasks_on_the_wrong_day_are_dropped_and_repeats_limited():
+    deep = task("Tulsi", "Water deeply at the roots", "Copied.")
+    pinch = task("Chillies", "Pinch off side shoots", "Bushier.")
+    llm = FakeLLM(week([deep, pinch], [deep, pinch], [deep, pinch]))
+    result = await plan_week(plants(), MILD_3, facts=[], llm=llm)  # not dry, so no deep watering
+
+    actions = [[t.action for t in day.tasks] for day in result.days]
+    assert actions[0] == ["Pinch off side shoots"]
+    assert actions[1] == ["Pinch off side shoots"]
+    assert len(actions[2]) == 1 and actions[2][0] != "Pinch off side shoots"  # third repeat replaced
 
 
 async def test_check_in_facts_reach_the_prompt_and_the_plan():

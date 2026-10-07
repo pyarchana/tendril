@@ -49,7 +49,7 @@ async def test_create_week_plan_stores_plan_and_tasks(session):
         ("Chillies", "Check soil moisture", TaskStatus.pending),
         ("Tulsi", "Harvest top leaves", TaskStatus.pending),
     ]
-    assert await tasks_on(session, D2) == []
+    assert len(await tasks_on(session, D2)) == 1  # empty model day topped up with a routine task
 
 
 async def test_rerunning_replaces_pending_tasks_and_keeps_done_ones(session):

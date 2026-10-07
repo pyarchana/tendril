@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.db import dispose_engine, init_db
+from app.deps import preload_whisper
 from app.routers import checkin, setup, tasks, today
 from app.scheduler import create_scheduler, sync_jobs
 
@@ -19,6 +20,7 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     settings = get_settings()
     logging.basicConfig(level=settings.log_level)
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per outgoing request is noise
     settings.ensure_dirs()
     await init_db()
     app.state.scheduler = None
@@ -27,6 +29,8 @@ async def lifespan(app: FastAPI):
         app.state.scheduler.start()
         count = await sync_jobs(app.state.scheduler)
         log.info("Scheduler started for %d garden(s), mornings at %d:00", count, settings.morning_hour)
+    if settings.whisper_preload:
+        preload_whisper()
     if not settings.setup_password:
         log.warning("SETUP_PASSWORD is not set: /setup is open to anyone who can reach this server")
     yield

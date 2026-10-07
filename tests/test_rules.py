@@ -10,7 +10,7 @@ from app.services.rules import (
     rule_based_plan,
     serious_issues,
 )
-from tests.factories import HOT, MILD, RAINY, START, forecast, plants
+from tests.factories import HOT, MILD, RAINY, START, WET, forecast, plants
 
 
 def actions(day: PlanDay) -> list[str]:
@@ -57,6 +57,29 @@ def test_every_fallback_day_respects_limits():
         assert 1 <= len(day.tasks) <= MAX_TASKS_PER_DAY
         assert all(len(t.action.split()) <= MAX_ACTION_WORDS for t in day.tasks)
         assert all(t.plant in {"Tulsi", "Chillies"} for t in day.tasks)
+
+
+def test_no_routine_watering_for_plants_already_watered_daily():
+    garden = plants()
+    for plant in garden:
+        plant.notes = "Balcony pot, watered every morning and evening."
+    plan = rule_based_plan(garden, forecast(*[MILD] * 7, past=(WET, WET, WET)), facts=[])
+    assert not any("Water lightly" in t.action for day in plan for t in day.tasks)
+
+
+def test_model_watering_dropped_for_plants_on_a_routine_but_rules_still_apply():
+    garden = plants()
+    garden[0].notes = "Watered every morning and evening."  # Tulsi
+    model_day = PlanDay(date=START, tasks=[
+        PlanTask(plant="Tulsi", action="Water lightly", reason="Sunny."),
+        PlanTask(plant="Chillies", action="Water lightly", reason="Sunny."),
+    ])
+    context = day_contexts(forecast(MILD, past=(WET, WET, WET)))[0]
+    assert actions(enforce_rules(model_day, context, garden)) == ["Water lightly"]
+    assert enforce_rules(model_day, context, garden).tasks[0].plant == "Chillies"
+
+    dry = day_contexts(forecast(MILD, past=(MILD, MILD, MILD)))[0]
+    assert "Water deeply at the roots" in actions(enforce_rules(PlanDay(date=START), dry, garden))
 
 
 def test_fallback_can_plan_a_subset_of_dates():

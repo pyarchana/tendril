@@ -72,7 +72,7 @@ Voice note (may be in English or Hindi): "{transcript}"
 
 Extract facts, written in short English phrases:
 - plant: the plant the note is mainly about, using a name above, or "" if unclear or the whole garden
-- done: care they say they already did, e.g. "watered", "harvested leaves"
+- done: care they say they already did, naming the plant when they do, e.g. "watered chillies", "harvested tulsi leaves"
 - observations: other things they noticed, e.g. "new flowers"
 - health_flags: problems such as wilting, pests, aphids, rot, mould, yellow leaves; [] if none
 
@@ -88,11 +88,27 @@ def _mentioned(text: str, plants: Sequence[Plant]) -> list[str]:
     return [p.name for p in plants if p.name.lower()[:5] in text]
 
 
+def _sentences(text: str) -> list[str]:
+    return [f" {part} " for part in re.split(r"[.!?;,]|and|but", text.lower()) if part.strip()]
+
+
+def keyword_done(transcript: str, plants: Sequence[Plant]) -> list[str]:
+    """Care actions said in the note, with the plant named in the same sentence ("watered chillies")."""
+    items = []
+    for sentence in _sentences(transcript):
+        if any(word in sentence for word in _NEGATIONS):
+            continue
+        named = _mentioned(sentence, plants)
+        for word, label in _DONE_WORDS.items():
+            if word in sentence:
+                items.append(f"{label} {named[0].lower()}" if len(named) == 1 else label)
+    return list(dict.fromkeys(items))
+
+
 def rule_based_facts(transcript: str, plants: Sequence[Plant]) -> CheckInFacts:
     """Keyword fallback when the model is unavailable."""
     text = f" {transcript.lower()} "
-    negated = any(word in text for word in _NEGATIONS)
-    done = [] if negated else sorted({label for word, label in _DONE_WORDS.items() if word in text})
+    done = keyword_done(transcript, plants)
     flags = serious_issues([text])
     if "yellow" in text:
         flags.append("yellow leaves")
@@ -125,7 +141,24 @@ async def extract_facts(
     if facts is None:
         log.warning("Using keyword extraction instead of the model")
         return rule_based_facts(transcript, plants), "rules"
-    return facts, "model"
+    # Small models sometimes leave out an action; keywords catch the obvious ones.
+    extra = [item for item in keyword_done(transcript, plants) if not _already_said(item, facts, plants)]
+    return facts.model_copy(update={"done": [*facts.done, *extra][:10]}), "model"
+
+
+def _already_said(item: str, facts: CheckInFacts, plants: Sequence[Plant]) -> bool:
+    """Is a keyword item ("watered chillies") already covered by the model's done list?"""
+    plant_words = set().union(*(_content_words(p.name) for p in plants)) if plants else set()
+    action = _content_words(item) - plant_words
+    named = _mentioned(f" {item} ", plants)
+    for said in facts.done:
+        if not action <= _content_words(said):
+            continue
+        said_named = _mentioned(f" {said.lower()} ", plants)
+        said_plant = said_named[0] if said_named else facts.plant
+        if not named or not said_plant or named[0] == said_plant:
+            return True
+    return False
 
 
 def _stem(word: str) -> str:
@@ -139,15 +172,26 @@ def _content_words(text: str) -> set[str]:
     return {_stem(word) for word in re.findall(r"[a-z]+", text.lower()) if len(word) > 2 and word not in _STOP}
 
 
-def matches_task(task: Task, done: Sequence[str]) -> bool:
+def matches_task(task: Task, done: Sequence[str], plants: Sequence[Plant] = (), default_plant: str = "") -> bool:
+    """Does something the gardener said they did tick off this task?
+
+    An item naming a plant ("watered chillies") only counts for that plant; other items count
+    for the note's main plant, or for every plant when the note isn't about one.
+    """
     action = task.action.lower()
+    plant_words = set().union(*(_content_words(p.name) for p in plants)) if plants else set()
     for item in done:
         said = item.lower().strip()
+        named = _mentioned(f" {said} ", plants)
+        if named and task.plant.name not in named:
+            continue
+        if not named and default_plant and task.plant.name != default_plant:
+            continue
         if said in _ALL_DONE:
             return True
         if "skip" in action and "skip" not in said:
             continue  # "watered" should not tick off "Skip watering today"
-        if _content_words(action) & _content_words(said):
+        if (_content_words(action) - plant_words) & (_content_words(said) - plant_words):
             return True
     return False
 
@@ -172,9 +216,7 @@ async def record_check_in(
     for task in today_tasks:
         if task.status != TaskStatus.pending:
             continue
-        if facts.plant and task.plant.name != facts.plant:
-            continue
-        if matches_task(task, facts.done):
+        if matches_task(task, facts.done, garden.plants, facts.plant):
             task.status = TaskStatus.done
             task.completed_at = dt.datetime.now(dt.timezone.utc)
             marked.append(task)

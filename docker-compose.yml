@@ -1,0 +1,67 @@
+services:
+  app:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      DATA_DIR: /data
+      DATABASE_URL: sqlite+aiosqlite:////data/tendril.db
+      WHISPER_PRELOAD: "true"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HUB_VERBOSITY: error
+      HF_HUB_DISABLE_XET: "1"  # plain HTTPS download; the xet transfer can stall
+    ports:
+      - "${APP_BIND:-127.0.0.1}:8000:8000"
+    volumes:
+      - tendril-data:/data
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # One-shot: downloads the text model into the ollama volume, then exits.
+  ollama-pull:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-qwen2.5:3b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  # HTTPS for a real server: docker compose --profile https up -d
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  tendril-data:
+  ollama-models:
+  caddy-data:
+  caddy-config:

@@ -17,11 +17,12 @@ class Settings(BaseSettings):
 
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:3b"
-    ollama_timeout: float = 90.0
+    ollama_timeout: float = 300.0  # a CPU-only first call loads the model and reads the whole prompt
 
     whisper_model: str = "small"
     whisper_language: Literal["en", "hi", "auto"] = "auto"
     whisper_timeout: float = 180.0
+    whisper_preload: bool = False  # load (and download) the model at startup instead of on the first note
 
     weather_timeout: float = 10.0
 

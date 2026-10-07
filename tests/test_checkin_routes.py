@@ -21,7 +21,7 @@ WEATHER = forecast(MILD, MILD, MILD, past=(WET, WET, WET))
 PLAN = {
     "days": [
         {"date": START.isoformat(), "tasks": [
-            {"plant": "Chillies", "action": "Water deeply at the roots", "reason": "Dry spell."},
+            {"plant": "Chillies", "action": "Water lightly in the morning", "reason": "Warm day."},
             {"plant": "Tulsi", "action": "Check soil moisture", "reason": "Routine."},
         ]},
         {"date": D1.isoformat(), "tasks": []},
@@ -80,9 +80,9 @@ async def test_voice_note_is_transcribed_and_ticks_off_a_task(api, session, fake
 
     assert response.status_code == 200
     body = response.json()
-    assert body["message"] == "Marked “Water deeply at the roots” done."
+    assert body["message"] == "Marked “Water lightly in the morning” done."
     assert body["transcript"] == "I watered the chillies."
-    assert body["marked"] == ["Water deeply at the roots"]
+    assert body["marked"] == ["Water lightly in the morning"]
     assert body["plan_changed"] is False
     path, hint = fakes["transcriber"].calls[0]
     assert path.suffix == ".webm" and path.exists()
@@ -91,7 +91,7 @@ async def test_voice_note_is_transcribed_and_ticks_off_a_task(api, session, fake
     check_in = await session.scalar(select(CheckIn))
     assert check_in.audio_path == str(path)
     task = await session.scalar(
-        select(Task).where(Task.action == "Water deeply at the roots").execution_options(populate_existing=True)
+        select(Task).where(Task.action == "Water lightly in the morning").execution_options(populate_existing=True)
     )
     assert task.status == TaskStatus.done
 

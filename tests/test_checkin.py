@@ -19,7 +19,7 @@ WEATHER = forecast(MILD, MILD, MILD, past=(WET, WET, WET))
 PLAN = {
     "days": [
         {"date": START.isoformat(), "tasks": [
-            {"plant": "Chillies", "action": "Water deeply at the roots", "reason": "Dry spell."},
+            {"plant": "Chillies", "action": "Water lightly in the morning", "reason": "Warm day."},
             {"plant": "Tulsi", "action": "Check soil moisture", "reason": "Routine."},
         ]},
         {"date": D1.isoformat(), "tasks": [{"plant": "Tulsi", "action": "Harvest top leaves", "reason": "Bushy."}]},
@@ -51,19 +51,51 @@ async def test_voice_note_ticks_off_the_matching_task(session):
 
     assert result.source == "model"
     assert result.facts.plant == "Chillies"
-    assert [task.action for task in result.marked] == ["Water deeply at the roots"]
+    assert [task.action for task in result.marked] == ["Water lightly in the morning"]
     assert await statuses(session) == {
-        "Water deeply at the roots": TaskStatus.done,
+        "Water lightly in the morning": TaskStatus.done,
         "Check soil moisture": TaskStatus.pending,
     }
-    assert result.message == "Marked “Water deeply at the roots” done."
+    assert result.message == "Marked “Water lightly in the morning” done."
     stored = await session.scalar(select(CheckIn))
     assert stored.transcript == "Watered the chillies."
     assert stored.facts["done"] == ["watered"]
     messages, schema = llm.calls[0]
     assert schema == FACTS_SCHEMA
     assert "Watered the chillies." in messages[-1]["content"]
-    assert "Chillies: Water deeply at the roots" in messages[-1]["content"]
+    assert "Chillies: Water lightly in the morning" in messages[-1]["content"]
+
+
+async def test_done_item_naming_another_plant_ticks_that_plant(session):
+    garden = await planned_garden(session)
+    llm = FakeLLM(facts("Tulsi", done=["watered chillies"], health_flags=["aphids"]))
+
+    result = await record_check_in(
+        session, garden, transcript="I watered the chillies. Aphids on the tulsi.", now=NOW, llm=llm
+    )
+
+    assert [(t.plant.name, t.action) for t in result.marked] == [("Chillies", "Water lightly in the morning")]
+    assert result.serious == ["pests"]
+
+
+async def test_keywords_catch_an_action_the_model_left_out(session):
+    garden = await planned_garden(session)
+    llm = FakeLLM(facts("Tulsi", done=["checked under leaves for pests"], health_flags=["aphids"]))
+
+    result = await record_check_in(
+        session, garden, transcript="I watered the Chillies this morning. Aphids under the Tulsi leaves.",
+        now=NOW, llm=llm,
+    )
+
+    assert result.facts.done == ["checked under leaves for pests", "watered chillies"]
+    assert ("Chillies", "Water lightly in the morning") in [(t.plant.name, t.action) for t in result.marked]
+
+
+def test_plant_names_alone_do_not_match_tasks():
+    garden = plants()
+    harvest = Task(action="Harvest tulsi leaves", plant=garden[0])
+    assert not matches_task(harvest, ["watered tulsi"], garden)
+    assert matches_task(harvest, ["harvested tulsi leaves"], garden)
 
 
 async def test_unknown_plant_becomes_whole_garden(session):
@@ -104,9 +136,9 @@ async def test_model_failure_uses_keyword_extraction(session):
 
     assert result.source == "rules"
     assert result.facts.plant == "Chillies"
-    assert result.facts.done == ["watered"]
+    assert result.facts.done == ["watered chillies"]
     assert result.serious == ["pests"]
-    assert [task.action for task in result.marked] == ["Water deeply at the roots"]
+    assert [task.action for task in result.marked] == ["Water lightly in the morning"]
 
 
 def test_keyword_extraction_respects_negation_and_yellow_leaves():
@@ -132,7 +164,7 @@ def test_keyword_extraction_keeps_plain_notes_as_observations():
 
 def test_watering_does_not_tick_off_skip_watering():
     skip = Task(action="Skip watering today")
-    water = Task(action="Water deeply at the roots")
+    water = Task(action="Water lightly in the morning")
     assert not matches_task(skip, ["watered"])
     assert matches_task(skip, ["skipped watering"])
     assert matches_task(water, ["watered the roots"])

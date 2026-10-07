@@ -1,5 +1,7 @@
 import datetime as dt
+import logging
 import secrets
+import threading
 from collections.abc import Callable
 from functools import lru_cache
 
@@ -14,6 +16,8 @@ from app.models import Garden
 from app.services.llm import LLM, OllamaClient
 from app.services.plans import garden_now
 from app.services.speech import Transcriber, WhisperTranscriber
+
+log = logging.getLogger(__name__)
 
 Clock = Callable[[Garden], dt.datetime]
 
@@ -56,3 +60,16 @@ def _whisper() -> WhisperTranscriber:
 def get_transcriber() -> Transcriber:
     """One shared model instance, loaded on the first voice note."""
     return _whisper()
+
+
+def preload_whisper() -> None:
+    """Download and load the whisper model in a daemon thread so startup is not blocked."""
+
+    def run() -> None:
+        try:
+            _whisper()._load()
+            log.info("Whisper model ready")
+        except Exception:
+            log.exception("Could not preload the whisper model; it will load on the first voice note")
+
+    threading.Thread(target=run, name="whisper-preload", daemon=True).start()

@@ -18,6 +18,7 @@ from app.services.weather import DayForecast, Forecast, format_hour
 
 DEEP_WATER_AFTER_DRY_DAYS = 3
 HEALTH_LOOKBACK_DAYS = 3
+RULE_KINDS = {"skip_water", "shade", "deep_water"}  # only the weather rules decide these
 
 # Pots dry out fastest, open beds slowest.
 _THIRST = {LocationType.pot: 0, LocationType.window: 1, LocationType.terrace: 2, LocationType.bed: 3}
@@ -186,21 +187,14 @@ def _merge(first: list[PlanTask], then: list[PlanTask]) -> list[PlanTask]:
     return merged[:MAX_TASKS_PER_DAY]
 
 
-def enforce_rules(
-    day: PlanDay, context: DayContext, plants: Sequence[Plant], extra: Sequence[PlanTask] = ()
-) -> PlanDay:
-    """Make a model-made day obey the weather rules."""
-    tasks = [t for t in day.tasks if not (context.weather.is_rainy and is_watering(t.action))]
-    return PlanDay(date=day.date, tasks=_merge([*extra, *required_tasks(context, plants)], tasks))
-
-
-def fallback_day(
-    context: DayContext, plants: Sequence[Plant], index: int, extra: Sequence[PlanTask] = ()
-) -> PlanDay:
-    tasks = _merge([*extra, *required_tasks(context, plants)], [])
+def _add_routine(
+    tasks: list[PlanTask], context: DayContext, plants: Sequence[Plant], index: int, upto: int
+) -> list[PlanTask]:
+    """Top a day up with calm routine tasks, rotating so neighbouring days differ."""
+    tasks = list(tasks)
     busy = {task.plant for task in tasks}
     for step in range(len(_ROUTINE)):
-        if len(tasks) >= MAX_TASKS_PER_DAY:
+        if len(tasks) >= upto:
             break
         # Each day can use up to two routine tasks, so advance by two to avoid repeats.
         action, reason = _ROUTINE[(index * MAX_TASKS_PER_DAY + step) % len(_ROUTINE)]
@@ -208,9 +202,45 @@ def fallback_day(
             continue
         free = [p for p in plants if p.name not in busy] or list(plants)
         plant = free[(index + step) % len(free)]
+        if is_watering(action) and "water" in (plant.notes or "").lower():
+            continue  # the gardener already has a watering routine for this plant
         busy.add(plant.name)
         tasks.append(PlanTask(plant=plant.name, action=action, reason=reason))
-    return PlanDay(date=context.weather.date, tasks=tasks)
+    return tasks
+
+
+def enforce_rules(
+    day: PlanDay, context: DayContext, plants: Sequence[Plant], extra: Sequence[PlanTask] = (), index: int = 0
+) -> PlanDay:
+    """Make a model-made day obey the weather rules.
+
+    The rules decide when skip-watering, shade and deep-watering happen: the model's versions are
+    dropped on other days, and when they match a rule they take its reason ("3 dry days in a row.").
+    A day left empty gets one routine task.
+    """
+    required = [*extra, *required_tasks(context, plants)]
+    rule_reasons = {task_kind(t.action): t.reason for t in required if task_kind(t.action)}
+    watered = {p.name for p in plants if "water" in (p.notes or "").lower()}  # already on a routine
+    tasks = []
+    for task in day.tasks:
+        kind = task_kind(task.action)
+        if context.weather.is_rainy and is_watering(task.action):
+            continue
+        if kind in RULE_KINDS and kind not in rule_reasons:
+            continue
+        if kind is None and is_watering(task.action) and task.plant in watered:
+            continue
+        reason = rule_reasons.get(kind)
+        tasks.append(task.model_copy(update={"reason": reason}) if reason else task)
+    merged = _merge(required, tasks) or _add_routine([], context, plants, index, upto=1)
+    return PlanDay(date=day.date, tasks=merged)
+
+
+def fallback_day(
+    context: DayContext, plants: Sequence[Plant], index: int, extra: Sequence[PlanTask] = ()
+) -> PlanDay:
+    tasks = _merge([*extra, *required_tasks(context, plants)], [])
+    return PlanDay(date=context.weather.date, tasks=_add_routine(tasks, context, plants, index, MAX_TASKS_PER_DAY))
 
 
 def rule_based_plan(
