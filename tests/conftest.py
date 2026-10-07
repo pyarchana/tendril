@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
+from app.db import dispose_engine, get_sessionmaker, init_db
 
 
 @pytest.fixture(autouse=True)
@@ -13,6 +14,16 @@ def isolated_settings(tmp_path, monkeypatch):
     get_settings.cache_clear()
     yield get_settings()
     get_settings.cache_clear()
+
+
+@pytest.fixture
+async def session(isolated_settings):
+    """An async session on a fresh database with all tables created."""
+    isolated_settings.ensure_dirs()
+    await init_db()
+    async with get_sessionmaker()() as db_session:
+        yield db_session
+    await dispose_engine()
 
 
 @pytest.fixture
