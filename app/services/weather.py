@@ -93,6 +93,11 @@ def condition_for(code: int) -> str:
     return "cloudy"
 
 
+def format_hour(hour: int) -> str:
+    """16 -> '4 PM'."""
+    return f"{hour % 12 or 12} {'AM' if hour < 12 else 'PM'}"
+
+
 def detect_change(planned: DayForecast, current: DayForecast) -> list[str]:
     """Describe meaningful differences between the planned and current forecast for a day."""
     changes = []
