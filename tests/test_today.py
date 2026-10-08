@@ -3,12 +3,13 @@ import io
 from zoneinfo import ZoneInfo
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageColor
 from sqlalchemy import select
 
 from app.deps import get_clock
 from app.models import Task, TaskStatus
 from app.schemas import PlanTask
+from app.services.render import BG, LOCKSCREEN_HEIGHT, LOCKSCREEN_TOP_PAD, WIDTH
 from app.services.plans import create_week_plan
 from app.services.today import ensure_plan_image, load_today, summary_line
 from scripts.seed import seed
@@ -166,3 +167,32 @@ def test_summary_line_variants():
     assert summary_line(cards, day(START, **HOT)) == "Chillies: move pot into afternoon shade. Up to 38°."
     assert summary_line([], day(START)) == "Nothing needed in the garden today."
     assert summary_line([], None) == "Nothing needed in the garden today."
+
+
+async def test_lockscreen_image_is_phone_shaped_and_never_cached(api, session, clock):
+    garden = await planned_garden(session)
+    assert (await api.get(f"/today/{garden.checkin_token}/lockscreen.png")).status_code == 200
+
+    response = await api.get(f"/today/{garden.checkin_token}/lockscreen.png")
+
+    assert response.headers["cache-control"] == "no-store"
+    image = Image.open(io.BytesIO(response.content)).convert("RGB")
+    assert image.size == (WIDTH, LOCKSCREEN_HEIGHT) == (1080, 2340)
+    bg = ImageColor.getrgb(BG)
+    top = image.crop((0, 0, WIDTH, LOCKSCREEN_TOP_PAD))
+    bottom = image.crop((0, LOCKSCREEN_TOP_PAD + 1920, WIDTH, LOCKSCREEN_HEIGHT))
+    assert top.getcolors() == [(WIDTH * LOCKSCREEN_TOP_PAD, bg)]
+    assert bottom.getcolors() == [(WIDTH * (LOCKSCREEN_HEIGHT - LOCKSCREEN_TOP_PAD - 1920), bg)]
+
+
+async def test_only_versioned_plan_links_are_cached(api, session, clock):
+    garden = await planned_garden(session)
+    plain = await api.get(f"/today/{garden.checkin_token}/plan.png")
+    versioned = await api.get(f"/today/{garden.checkin_token}/plan.png?v=abc")
+    assert plain.headers["cache-control"] == "no-store"
+    assert versioned.headers["cache-control"] == "private, max-age=86400"
+
+
+async def test_lockscreen_needs_a_plan(api, session, clock):
+    garden = await seed(session)
+    assert (await api.get(f"/today/{garden.checkin_token}/lockscreen.png")).status_code == 404

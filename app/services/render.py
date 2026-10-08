@@ -362,6 +362,19 @@ def render_plan_image(
     return canvas.finish()
 
 
+# Phones since about 2017 are 19.5:9, taller than the 9:16 plan. The lock-screen copy adds
+# plain background so it fills the screen without cropping: a little on top (more room for
+# the clock) and the rest at the bottom, clear of the flashlight and camera buttons.
+LOCKSCREEN_HEIGHT = round(WIDTH * 19.5 / 9)
+LOCKSCREEN_TOP_PAD = 140
+
+
+def lockscreen_image(plan: Image.Image) -> Image.Image:
+    canvas = Image.new("RGB", (WIDTH, LOCKSCREEN_HEIGHT), BG)
+    canvas.paste(plan, (0, LOCKSCREEN_TOP_PAD))
+    return canvas
+
+
 def save_plan_image(image: Image.Image, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path, "PNG", optimize=True)

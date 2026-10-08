@@ -82,6 +82,7 @@ async def setup_page(
         url = today_url(garden)
         context |= {
             "today_url": url,
+            "lockscreen_url": f"{url}/lockscreen.png",
             "qr": qr_svg(url),
             "has_plan": await current_week_plan(session, garden, garden_today(garden)) is not None,
         }

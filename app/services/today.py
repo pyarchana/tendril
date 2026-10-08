@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import Image
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,7 @@ from app.models import CheckIn, Garden, Task, TaskStatus
 from app.schemas import MAX_TASKS_PER_DAY, PlanDay, PlanTask
 from app.services import planner
 from app.services.plans import current_week_plan
-from app.services.render import render_plan_image, save_plan_image, short_label
+from app.services.render import lockscreen_image, render_plan_image, save_plan_image, short_label
 from app.services.rules import serious_issues
 from app.services.weather import HEAT_TEMP_C, DayForecast, Forecast, format_hour
 
@@ -140,6 +141,28 @@ async def ensure_plan_image(view: TodayView) -> Path:
     path = images / f"{prefix}{view.image_key}.png"
     if not path.exists():
         await asyncio.to_thread(_render_to, view, path)
+        for old in images.glob(f"{prefix}*.png"):
+            if old != path:
+                old.unlink(missing_ok=True)
+    return path
+
+
+def _lockscreen_to(plan_path: Path, path: Path) -> None:
+    with Image.open(plan_path) as plan:
+        image = lockscreen_image(plan.convert("RGB"))
+    partial = path.with_suffix(".tmp")
+    save_plan_image(image, partial)
+    partial.replace(path)
+
+
+async def ensure_lockscreen_image(view: TodayView) -> Path:
+    """The phone-shaped copy of today's plan, rebuilt whenever the plan image changes."""
+    plan_path = await ensure_plan_image(view)
+    images = get_settings().images_dir
+    prefix = f"lock-garden{view.garden.id}-{view.date.isoformat()}-"
+    path = images / f"{prefix}{view.image_key}.png"
+    if not path.exists():
+        await asyncio.to_thread(_lockscreen_to, plan_path, path)
         for old in images.glob(f"{prefix}*.png"):
             if old != path:
                 old.unlink(missing_ok=True)

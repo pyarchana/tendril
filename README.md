@@ -183,6 +183,17 @@ Step 3 of the setup page shows a QR code for your private Today link.
 
 The link carries a random token. Anyone with it can see and update your garden, so keep it to yourself. The setup page itself is protected by `SETUP_PASSWORD`.
 
+### Your lock screen, automatically (iPhone)
+
+Every garden also has a lock-screen picture at `<your Today link>/lockscreen.png`. It's today's plan, padded to the 19.5:9 shape of modern phones so nothing gets cropped, and it's never cached, so the same link always returns the current plan. Step 4 of the setup page shows the link with a copy button. To set it automatically each morning:
+
+1. Open the setup page on your iPhone and copy the lock-screen link.
+2. In **Shortcuts**, go to **Automation**, tap **New Automation**, then **Time of Day**. Pick a few minutes after the morning job (7:05 by default), **Daily**, and **Run Immediately**.
+3. Add **Get Contents of URL** and paste the link.
+4. Add **Set Wallpaper Photo**, choose your lock screen, and turn off **Show Preview** and **Crop to Subject**.
+
+Action names can differ a little between iOS versions. The iPhone must be able to reach Tendril when the automation runs, for example on the same Wi-Fi or through your server's HTTPS address. On Android, an automation app such as MacroDroid can do the same with a "set wallpaper from URL" action.
+
 ## Configuration
 
 Everything is set in `.env` (see [`.env.example`](.env.example)):

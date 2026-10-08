@@ -100,6 +100,8 @@ async def test_phone_section_shows_qr_and_private_link(api, session, monkeypatch
     assert "<svg" in page.text
     assert f"http://localhost:8000/today/{garden.checkin_token}" in page.text
     assert "which your phone can't open" in page.text
+    assert f'value="http://localhost:8000/today/{garden.checkin_token}/lockscreen.png"' in page.text
+    assert "Set Wallpaper Photo" in page.text
 
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://garden.example.com/")
     get_settings.cache_clear()

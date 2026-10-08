@@ -117,4 +117,43 @@
     </form>
   {% endif %}
 </section>
+
+<section class="card" id="lockscreen">
+  <h2><span class="step">4</span> Put it on your lock screen</h2>
+  {% if not garden %}
+    <p class="muted">Your lock-screen link appears here once the garden is set.</p>
+  {% else %}
+    <p class="muted">Optional. On an iPhone, a Shortcuts automation can set each morning's plan as your lock screen, so you see it without opening anything.</p>
+    <label for="lock-link">Your lock-screen picture</label>
+    <div class="row">
+      <input id="lock-link" value="{{ lockscreen_url }}" readonly>
+      <button class="secondary" type="button" id="copy-lock">Copy</button>
+    </div>
+    <ol class="steps">
+      <li>Open this page on your iPhone and copy the link above.</li>
+      <li>In the <strong>Shortcuts</strong> app, go to <strong>Automation</strong>, tap <strong>New Automation</strong>, then <strong>Time of Day</strong>. Pick a few minutes after {{ morning_hour }}:00, <strong>Daily</strong>, and <strong>Run Immediately</strong>.</li>
+      <li>Add the action <strong>Get Contents of URL</strong> and paste the link.</li>
+      <li>Add <strong>Set Wallpaper Photo</strong>, choose your lock screen, and turn off <strong>Show Preview</strong> and <strong>Crop to Subject</strong>.</li>
+    </ol>
+    <p class="muted small">Action names can differ a little between iOS versions. Your iPhone must be able to reach Tendril when the automation runs, for example on the same Wi-Fi. On Android, an automation app such as MacroDroid can do the same with a "set wallpaper from URL" action.</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById("copy-lock")?.addEventListener("click", async event => {
+    const input = document.getElementById("lock-link");
+    input.select();
+    input.setSelectionRange(0, input.value.length);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      copied = true;
+    } catch {
+      copied = document.execCommand("copy");  // the Clipboard API needs HTTPS; this works over Wi-Fi too
+    }
+    event.target.textContent = copied ? "Copied" : "Select and copy";
+  });
+</script>
 {% endblock %}
