@@ -196,3 +196,22 @@ async def test_only_versioned_plan_links_are_cached(api, session, clock):
 async def test_lockscreen_needs_a_plan(api, session, clock):
     garden = await seed(session)
     assert (await api.get(f"/today/{garden.checkin_token}/lockscreen.png")).status_code == 404
+
+
+async def test_same_lockscreen_link_follows_the_plan(api, session, clock, isolated_settings):
+    """What a phone automation sees: one fixed link, fetched each morning."""
+    garden = await planned_garden(session)
+    url = f"/today/{garden.checkin_token}/lockscreen.png"
+    today = (await api.get(url)).content
+
+    task = await session.scalar(select(Task).where(Task.action == "Harvest top leaves"))
+    task.action = "Pinch flower spikes"
+    await session.commit()
+    replanned = (await api.get(url)).content
+
+    clock["now"] = dt.datetime.combine(D1, dt.time(7, 5), tzinfo=TZ)
+    next_morning = (await api.get(url)).content
+
+    assert len({today, replanned, next_morning}) == 3
+    lock_files = sorted(p.name for p in isolated_settings.images_dir.glob("lock-*.png"))
+    assert [name.split("-")[2:5] for name in lock_files] == [START.isoformat().split("-"), D1.isoformat().split("-")]

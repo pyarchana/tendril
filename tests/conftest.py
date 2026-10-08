@@ -8,6 +8,7 @@ from app.db import dispose_engine, get_sessionmaker, init_db
 @pytest.fixture(autouse=True)
 def isolated_settings(tmp_path, monkeypatch):
     """Point every test at its own temporary data directory and database."""
+    monkeypatch.chdir(tmp_path)  # so a developer's local .env never leaks into tests
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{tmp_path.as_posix()}/test.db")
     monkeypatch.setenv("SCHEDULER_ENABLED", "false")

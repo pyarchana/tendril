@@ -194,6 +194,8 @@ Every garden also has a lock-screen picture at `<your Today link>/lockscreen.png
 
 Action names can differ a little between iOS versions. The iPhone must be able to reach Tendril when the automation runs, for example on the same Wi-Fi or through your server's HTTPS address. On Android, an automation app such as MacroDroid can do the same with a "set wallpaper from URL" action.
 
+What's tested: the link itself, fetched over Wi-Fi the way a Shortcut does (full-size picture, never cached), and that the same link shows the new plan after a re-plan and on the next morning. What isn't, yet: the Shortcuts steps on a real iPhone. If they differ on your phone, please open an issue.
+
 ## Configuration
 
 Everything is set in `.env` (see [`.env.example`](.env.example)):
