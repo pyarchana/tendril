@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.db import dispose_engine, init_db
 from app.deps import preload_whisper
+from app.ratelimit import RateLimiter
 from app.routers import checkin, setup, tasks, today
 from app.scheduler import create_scheduler, sync_jobs
 
@@ -42,6 +43,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="Tendril", lifespan=lifespan)
     app.state.scheduler = None
+    app.state.checkin_limiter = RateLimiter()
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(setup.router)
     app.include_router(today.router)

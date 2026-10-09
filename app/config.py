@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     whisper_language: Literal["en", "hi", "auto"] = "auto"
     whisper_timeout: float = 180.0
     whisper_preload: bool = False  # load (and download) the model at startup instead of on the first note
+    checkin_limit_per_hour: int = 10  # voice and typed notes per garden; protects the CPU if a link leaks
 
     weather_timeout: float = 10.0
 

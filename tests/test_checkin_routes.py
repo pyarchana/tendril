@@ -6,6 +6,7 @@ import pytest
 import respx
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.deps import get_clock, get_llm, get_transcriber
 from app.models import CheckIn, Task, TaskStatus
 from app.routers.checkin import MAX_AUDIO_BYTES
@@ -174,3 +175,22 @@ async def test_pests_on_an_unknown_plant_ask_instead_of_treating(api, session, f
     assert "Spray neem oil on leaves" not in actions
     page = await api.get(f"/today/{garden.checkin_token}")
     assert "Pests reported, but on which plant? Send a quick note naming it." in page.text
+
+
+async def test_check_ins_are_limited_per_hour(api, session, fakes, isolated_settings, monkeypatch):
+    monkeypatch.setenv("CHECKIN_LIMIT_PER_HOUR", "2")
+    get_settings.cache_clear()
+    garden = await planned_garden(session)
+    fakes["llm"] = FakeLLM(WATERED, WATERED)
+    fakes["transcriber"] = FakeTranscriber("I watered the chillies.")
+    url = f"/c/{garden.checkin_token}"
+
+    assert (await api.post(f"{url}/text", data={"text": "Watered the chillies."})).status_code == 200
+    assert (await api.post(f"{url}/text", data={"text": "Watered the chillies."})).status_code == 200
+    blocked = await api.post(f"{url}/audio", files={"audio": WEBM})
+
+    assert blocked.status_code == 429
+    assert "try again in about 60 minutes" in blocked.json()["detail"]
+    assert int(blocked.headers["retry-after"]) > 3500
+    assert fakes["transcriber"].calls == []
+    assert list(isolated_settings.audio_dir.iterdir()) == []  # nothing saved while blocked

@@ -5,7 +5,7 @@ import threading
 from collections.abc import Callable
 from functools import lru_cache
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +40,18 @@ def require_setup_access(credentials: HTTPBasicCredentials | None = Depends(_bas
     if credentials is None or not secrets.compare_digest(credentials.password.encode(), password.encode()):
         raise HTTPException(
             status_code=401, detail="Setup password required", headers={"WWW-Authenticate": 'Basic realm="Tendril setup"'}
+        )
+
+
+def limit_check_ins(request: Request, garden: Garden = Depends(garden_from_token)) -> None:
+    """Cap voice and typed notes per garden, checked before anything is saved or transcribed."""
+    wait = request.app.state.checkin_limiter.check(garden.id, get_settings().checkin_limit_per_hour)
+    if wait is not None:
+        minutes = max(1, round(wait / 60))
+        raise HTTPException(
+            status_code=429,
+            detail=f"That's a lot of notes for one hour. Please try again in about {minutes} minutes.",
+            headers={"Retry-After": str(round(wait))},
         )
 
 

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db import get_session
-from app.deps import Clock, garden_from_token, get_clock, get_llm, get_transcriber
+from app.deps import Clock, garden_from_token, get_clock, get_llm, get_transcriber, limit_check_ins
 from app.models import Garden
 from app.services.checkin import record_check_in, replan_after_check_in
 from app.services.llm import LLM
@@ -80,7 +80,7 @@ async def _finish(
     }
 
 
-@router.post("/c/{token}/audio")
+@router.post("/c/{token}/audio", dependencies=[Depends(limit_check_ins)])
 async def upload_voice_note(
     background: BackgroundTasks,
     audio: UploadFile = File(...),
@@ -102,7 +102,7 @@ async def upload_voice_note(
     return await _finish(background, session, garden, now, transcript, str(path), llm)
 
 
-@router.post("/c/{token}/text")
+@router.post("/c/{token}/text", dependencies=[Depends(limit_check_ins)])
 async def submit_text_note(
     background: BackgroundTasks,
     text: str = Form(..., min_length=2, max_length=500),
