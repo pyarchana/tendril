@@ -101,6 +101,19 @@ def width_of(text: str, font) -> float:
     return font.getlength(text) / SCALE
 
 
+def fit_tracked(text: str, font, tracking: float, max_width: float) -> str:
+    """Shorten a letter-spaced label with an ellipsis until it fits (long plant names)."""
+
+    def width(candidate: str) -> float:
+        return width_of(candidate, font) + tracking * len(candidate)
+
+    if width(text) <= max_width:
+        return text
+    while text and width(text.rstrip() + "…") > max_width:
+        text = text[:-1]
+    return text.rstrip() + "…"
+
+
 def wrap(text: str, font, max_width: float, max_lines: int) -> list[str]:
     """Greedy word wrap; the last allowed line is cut with an ellipsis if needed."""
     lines: list[str] = []
@@ -309,7 +322,8 @@ def _draw_cards(c: Canvas, tasks: Sequence[PlanTask]) -> None:
         c.rounded((left, y, right, y + card.height), 40, CARD)
         x = left + CARD_PAD
         cursor = y + CARD_PAD
-        c.tracked((x, cursor), card.task.plant.upper(), body_font(26, 700), ACCENT, tracking=3)
+        label = fit_tracked(card.task.plant.upper(), body_font(26, 700), 3, right - left - 2 * CARD_PAD)
+        c.tracked((x, cursor), label, body_font(26, 700), ACCENT, tracking=3)
         cursor += 28 + 18
         for line in card.action_lines:
             c.text((x, cursor), line, heading_font(card.action_size), TEXT)

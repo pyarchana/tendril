@@ -10,6 +10,7 @@ from app.services.render import (
     CARDS_BOTTOM,
     CARDS_TOP,
     CARD_GAP,
+    CARD_PAD,
     HEIGHT,
     MARGIN,
     STRIP_TOP,
@@ -17,10 +18,12 @@ from app.services.render import (
     WIDTH,
     _layout_cards,
     body_font,
+    fit_tracked,
     render_plan_image,
     save_plan_image,
     short_label,
     weather_pill_text,
+    width_of,
     wrap,
 )
 from tests.factories import RAINY, day
@@ -130,3 +133,16 @@ def test_save_plan_image_writes_png(tmp_path):
     with Image.open(path) as saved:
         assert saved.format == "PNG"
         assert saved.size == (1080, 1920)
+
+
+def test_long_plant_names_stay_inside_the_card():
+    font, inner = body_font(26, 700), WIDTH - 2 * MARGIN - 2 * CARD_PAD
+    label = fit_tracked("P" * 60, font, 3, inner)
+    assert label.endswith("…")
+    assert width_of(label, font) + 3 * len(label) <= inner
+    assert fit_tracked("TULSI", font, 3, inner) == "TULSI"
+
+    task = PlanTask(plant="Sacred basil from my grandmother's garden in the old house", action="Water", reason="")
+    image = render_plan_image(TODAY, None, [task], upcoming())
+    just_outside = image.crop((WIDTH - MARGIN + 4, CARDS_TOP + 30, WIDTH - MARGIN + 8, CARDS_TOP + 80))
+    assert {color for _, color in just_outside.getcolors()} == {rgb(BG)}
