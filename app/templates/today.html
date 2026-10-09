@@ -37,6 +37,9 @@
          alt="Today's plan. {{ view.summary }}">
   </figure>
   <p class="summary">{{ view.summary }}</p>
+  {% if view.plan_source == "rules" %}
+    <p class="muted small">The local model wasn't available, so this plan comes from Tendril's backup rules.</p>
+  {% endif %}
 
   {% if view.tasks %}
   <ul class="tasks">

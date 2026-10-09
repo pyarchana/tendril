@@ -215,3 +215,19 @@ async def test_same_lockscreen_link_follows_the_plan(api, session, clock, isolat
     assert len({today, replanned, next_morning}) == 3
     lock_files = sorted(p.name for p in isolated_settings.images_dir.glob("lock-*.png"))
     assert [name.split("-")[2:5] for name in lock_files] == [START.isoformat().split("-"), D1.isoformat().split("-")]
+
+
+async def test_page_says_when_the_backup_rules_made_the_plan(api, session, clock):
+    garden = await seed(session)
+    weather = forecast(RAINY, MILD, MILD, past=(WET, WET, WET))
+    await create_week_plan(session, garden, today=START, forecast=weather, llm=FakeLLM("bad", "bad"))
+
+    page = await api.get(f"/today/{garden.checkin_token}")
+
+    assert "this plan comes from Tendril's backup rules" in page.text
+
+
+async def test_no_backup_note_when_the_model_made_the_plan(api, session, clock):
+    garden = await planned_garden(session)
+    page = await api.get(f"/today/{garden.checkin_token}")
+    assert "backup rules" not in page.text

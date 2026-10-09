@@ -139,6 +139,8 @@ async def refresh_today(
     facts = await recent_facts(session, garden, today)
     result = await planner.adjust_today(garden.plants, forecast, today, today_plan.tasks, changes, facts, llm)
     new_day = result.days[0]
+    if result.source == "rules":
+        plan.source = "rules"  # so the Today page says the backup planner stepped in
 
     others = [day for day in days if day.date != today]
     plan.days = planner.days_to_json(sorted([*others, new_day], key=lambda day: day.date))

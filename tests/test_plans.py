@@ -144,3 +144,15 @@ async def test_replan_rest_of_week_keeps_earlier_days(session):
     assert plan.days[0]["tasks"][0]["action"] == "Check soil moisture"  # yesterday untouched
     assert [task[1] for task in await tasks_on(session, D1)] == ["Spray neem oil on leaves", "Harvest top leaves"]
     assert "problems: aphids" in llm.calls[0][0][-1]["content"]
+
+
+async def test_refresh_falling_back_marks_the_plan_as_rules(session):
+    garden = await seed(session)
+    plan = await create_week_plan(session, garden, today=TODAY, forecast=MILD_3, llm=FakeLLM(GOOD))
+    assert plan.source == "model"
+
+    rainy_now = forecast(RAINY, MILD, MILD, past=(WET, WET, WET))
+    await refresh_today(session, garden, today=TODAY, forecast=rainy_now, llm=FakeLLM("bad", "bad"))
+
+    await session.refresh(plan)
+    assert plan.source == "rules"

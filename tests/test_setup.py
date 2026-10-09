@@ -141,3 +141,5 @@ async def test_plan_now_runs_in_the_background(api, app, session, isolated_setti
     page = await api.get(response.headers["location"])
     assert "Planning the week now" in page.text
     assert "Re-plan this week now" in page.text
+    later = await api.get("/setup")
+    assert "This week's plan came from the backup rules because qwen2.5:3b wasn't reachable" in later.text

@@ -80,11 +80,14 @@ async def setup_page(
     }
     if garden:
         url = today_url(garden)
+        plan = await current_week_plan(session, garden, garden_today(garden))
         context |= {
             "today_url": url,
             "lockscreen_url": f"{url}/lockscreen.png",
             "qr": qr_svg(url),
-            "has_plan": await current_week_plan(session, garden, garden_today(garden)) is not None,
+            "has_plan": plan is not None,
+            "plan_source": plan.source if plan else None,
+            "model": settings.ollama_model,
         }
     return templates.TemplateResponse(request, "setup.html", context)
 

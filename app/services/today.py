@@ -48,6 +48,7 @@ class TodayView:
     tasks: list[Task]
     upcoming: list[tuple[dt.date, DayForecast | None, PlanDay | None]]
     plan_note: str | None = None  # set when today's voice note changed the plan
+    plan_source: str | None = None  # "rules" when the backup planner stood in for the model
 
     @property
     def date(self) -> dt.date:
@@ -111,6 +112,7 @@ async def load_today(session: AsyncSession, garden: Garden, now: dt.datetime) ->
         tasks=tasks,
         upcoming=upcoming,
         plan_note=await _plan_note(session, garden, today),
+        plan_source=plan.source if plan else None,
     )
 
 

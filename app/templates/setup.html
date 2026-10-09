@@ -109,6 +109,10 @@
 
     {% if planning %}
       <p class="notice" role="status">Planning the week now. With a local model this takes a minute or two, then the Today page fills in.</p>
+    {% elif plan_source == "rules" %}
+      <p class="notice error">This week's plan came from the backup rules because {{ model }} wasn't reachable. Check that Ollama is running, then re-plan.</p>
+    {% elif plan_source %}
+      <p class="muted small">This week's plan was made by {{ model }}.</p>
     {% endif %}
     <form method="post" action="/setup/plan">
       <button class="secondary" type="submit" {% if not plants %}disabled{% endif %}>
