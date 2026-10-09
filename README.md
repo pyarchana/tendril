@@ -223,6 +223,8 @@ python -m venv .venv
 .venv/bin/python -m uvicorn app.main:app --reload  # needs Ollama on localhost:11434
 ```
 
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 The tests never touch the network or a real model. Open-Meteo is mocked with `respx`, the model with a scripted fake, and whisper with a fake transcriber. They cover planning (valid JSON, retry, fallback, every weather rule), forecast changes, image rendering, the Today page, voice check-ins, the setup page and the scheduler.
 
 ## What's next
