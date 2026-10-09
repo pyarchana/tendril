@@ -122,8 +122,9 @@ async def _plan_note(session: AsyncSession, garden: Garden, today: dt.date) -> s
         issues = serious_issues(check_in.facts.get("health_flags", []))
         if issues:
             plant = check_in.facts.get("plant")
-            where = f" on {plant}" if plant else ""
-            return f"Plan changed after your voice note: {' and '.join(issues)}{where}."
+            if not plant:
+                return f"{' and '.join(issues).capitalize()} reported, but on which plant? Send a quick note naming it."
+            return f"Plan changed after your voice note: {' and '.join(issues)} on {plant}."
     return None
 
 

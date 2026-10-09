@@ -69,14 +69,14 @@ async def _finish(
     llm: LLM,
 ) -> dict:
     result = await record_check_in(session, garden, transcript=transcript, now=now, audio_path=audio_path, llm=llm)
-    if result.serious:
+    if result.replan_needed:
         background.add_task(replan_after_check_in, garden.id, now.date(), llm)
     return {
         "message": result.message,
         "transcript": transcript,
         "facts": result.facts.model_dump(),
         "marked": [task.action for task in result.marked],
-        "plan_changed": bool(result.serious),
+        "plan_changed": result.replan_needed,
     }
 
 

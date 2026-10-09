@@ -139,7 +139,9 @@ def health_tasks(facts: Sequence[dict], plants: Sequence[Plant], first_day: dt.d
             continue
         if reported < since:
             continue
-        plant = match_plant(fact.get("plant", ""), plants) or _by_thirst(plants)[0]
+        plant = match_plant(fact.get("plant", ""), plants)
+        if plant is None:
+            continue  # better to ask which plant than to treat the wrong one
         for issue in serious_issues(fact.get("health_flags", [])):
             _, action, reason = SERIOUS_ISSUES[issue]
             tasks.append(PlanTask(plant=plant.name, action=action, reason=reason))
@@ -174,12 +176,25 @@ def required_tasks(context: DayContext, plants: Sequence[Plant]) -> list[PlanTas
     return tasks
 
 
-def _merge(first: list[PlanTask], then: list[PlanTask]) -> list[PlanTask]:
-    """Rule tasks first unless the plan already covers them; drop duplicates; cap per day."""
-    covered = {task_kind(task.action) for task in then} - {None}
+def _merge(rules: list[PlanTask], others: list[PlanTask]) -> list[PlanTask]:
+    """Rule tasks first, in priority order, then everything else; capped per day.
+
+    `rules` arrives in priority order: health treatment, skip watering (rain), shade (heat),
+    deep watering (dry spell). When a model task already covers a rule, it takes that rule's
+    slot with its own wording, so it can't be pushed out by the cap. If three rules apply on
+    one day, the lowest (deep watering) is the one that waits.
+    """
+    pool = list(others)
+    ordered: list[PlanTask] = []
+    for rule in rules:
+        kind = task_kind(rule.action)
+        cover = next((task for task in pool if kind and task_kind(task.action) == kind), None)
+        if cover is not None:
+            pool.remove(cover)
+        ordered.append(cover or rule)
     merged: list[PlanTask] = []
     seen = set()
-    for task in [t for t in first if task_kind(t.action) not in covered] + then:
+    for task in ordered + pool:
         key = (task.plant.lower(), task.action.lower())
         if key not in seen:
             seen.add(key)

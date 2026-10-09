@@ -91,6 +91,19 @@ async def test_keywords_catch_an_action_the_model_left_out(session):
     assert ("Chillies", "Water lightly in the morning") in [(t.plant.name, t.action) for t in result.marked]
 
 
+def test_only_the_same_kind_of_job_ticks_a_task():
+    check_soil = Task(action="Check soil moisture")
+    assert not matches_task(check_soil, ["loosened the soil"])
+    assert matches_task(check_soil, ["checked the soil"])
+    pests = Task(action="Check under leaves for pests")
+    assert matches_task(pests, ["checked under leaves for pests"])
+    assert not matches_task(pests, ["sprayed neem"])
+    assert matches_task(Task(action="Water deeply at the roots"), ["watered"])
+    assert matches_task(Task(action="Pinch off yellow leaves"), ["picked off the yellow leaves"])
+    assert matches_task(Task(action="Rotate the pot"), ["rotated the pot"])  # unknown kind: same verb
+    assert not matches_task(Task(action="Rotate the pot"), ["watered"])
+
+
 def test_plant_names_alone_do_not_match_tasks():
     garden = plants()
     harvest = Task(action="Harvest tulsi leaves", plant=garden[0])

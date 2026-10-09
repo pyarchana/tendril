@@ -155,3 +155,22 @@ async def test_serious_problem_replans_and_shows_on_today_page(api, session, fak
     assert "Spray neem oil on leaves" in actions
     page = await api.get(f"/today/{garden.checkin_token}")
     assert "Plan changed after your voice note: pests on Chillies." in page.text
+
+
+async def test_pests_on_an_unknown_plant_ask_instead_of_treating(api, session, fakes):
+    garden = await planned_garden(session)
+    fakes["llm"] = FakeLLM({"plant": "roses", "done": [], "observations": [], "health_flags": ["aphids"]})
+
+    response = await api.post(f"/c/{garden.checkin_token}/text", data={"text": "Aphids on the roses!"})
+
+    body = response.json()
+    assert body["plan_changed"] is False
+    assert body["message"] == (
+        "Noted pests. Which plant was it? Send a quick note naming it, and Tendril will plan the treatment."
+    )
+    actions = [t.action for t in await session.scalars(
+        select(Task).where(Task.date == START).execution_options(populate_existing=True)
+    )]
+    assert "Spray neem oil on leaves" not in actions
+    page = await api.get(f"/today/{garden.checkin_token}")
+    assert "Pests reported, but on which plant? Send a quick note naming it." in page.text

@@ -94,6 +94,11 @@ def test_recent_pests_come_first():
                                     reason="Pests reported in your check-in.")
 
 
+def test_no_treatment_for_a_plant_we_cannot_identify():
+    facts = [{"date": START.isoformat(), "plant": "rose", "health_flags": ["aphids"]}]
+    assert health_tasks(facts, plants(), START) == []
+
+
 def test_old_health_flags_are_ignored():
     facts = [{"date": "2026-09-20", "plant": "Chillies", "health_flags": ["wilting"]}]
     assert health_tasks(facts, plants(), START) == []
@@ -115,6 +120,27 @@ def test_enforce_keeps_model_task_that_already_covers_the_rule():
     ])
     fixed = enforce_rules(model_day, day_contexts(forecast(HOT))[0], plants())
     assert actions(fixed) == ["Shade the chilli pot"]
+
+
+def test_rules_keep_their_priority_when_more_apply_than_fit():
+    """Health, then heat, then the dry spell: with room for two, deep watering waits."""
+    context = day_contexts(forecast(HOT, past=(MILD, MILD, MILD)))[0]
+    pests = health_tasks([{"date": START.isoformat(), "plant": "Chillies", "health_flags": ["aphids"]}], plants(), START)
+    day = enforce_rules(PlanDay(date=START), context, plants(), pests)
+    assert actions(day) == ["Spray neem oil on leaves", "Move pot into afternoon shade"]
+
+
+def test_model_task_covering_a_rule_is_not_pushed_out():
+    """The model's own shade task takes the shade slot instead of being cut by the cap."""
+    context = day_contexts(forecast(HOT, past=(MILD, MILD, MILD)))[0]
+    pests = health_tasks([{"date": START.isoformat(), "plant": "Chillies", "health_flags": ["aphids"]}], plants(), START)
+    model_day = PlanDay(date=START, tasks=[
+        PlanTask(plant="Tulsi", action="Harvest top leaves", reason="Bushy."),
+        PlanTask(plant="Chillies", action="Shade the chilli pot", reason="Hot."),
+    ])
+    day = enforce_rules(model_day, context, plants(), pests)
+    assert actions(day) == ["Spray neem oil on leaves", "Shade the chilli pot"]
+    assert day.tasks[1].reason == "Heat peaks at 38°C."
 
 
 def test_match_plant_handles_loose_names():

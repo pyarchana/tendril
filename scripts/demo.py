@@ -64,7 +64,7 @@ async def check_in(session: AsyncSession, garden: Garden, note: str | None, voic
     result = await record_check_in(session, garden, transcript=note or "", now=now, audio_path=voice)
     print(f"Tendril: {result.message}")
     print(f"Facts ({result.source}): {json.dumps(result.facts.model_dump())}")
-    if result.serious:
+    if result.replan_needed:
         print("Re-planning the rest of the week...")
         plan = await replan_rest_of_week(session, garden, today=now.date())
         print(f"Re-planned by {plan.source}.")

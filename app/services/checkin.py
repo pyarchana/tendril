@@ -50,14 +50,25 @@ class CheckInResult:
     source: str  # "model" or "rules"
 
     @property
+    def replan_needed(self) -> bool:
+        """A serious problem on a known plant; with no plant, Tendril asks rather than guessing."""
+        return bool(self.serious and self.facts.plant)
+
+    @property
     def message(self) -> str:
         parts = []
         if self.marked:
             actions = ", ".join(f"“{task.action}”" for task in self.marked)
             parts.append(f"Marked {actions} done.")
-        if self.serious:
-            where = f" on {self.facts.plant}" if self.facts.plant else ""
-            parts.append(f"Noted {' and '.join(self.serious)}{where}, so the rest of the week is being re-planned.")
+        if self.replan_needed:
+            parts.append(
+                f"Noted {' and '.join(self.serious)} on {self.facts.plant}, so the rest of the week is being re-planned."
+            )
+        elif self.serious:
+            parts.append(
+                f"Noted {' and '.join(self.serious)}. Which plant was it? "
+                "Send a quick note naming it, and Tendril will plan the treatment."
+            )
         elif self.facts.observations:
             parts.append(f"Noted: {self.facts.observations[0]}.")
         return " ".join(parts) or "Thanks, noted."
@@ -172,14 +183,48 @@ def _content_words(text: str) -> set[str]:
     return {_stem(word) for word in re.findall(r"[a-z]+", text.lower()) if len(word) > 2 and word not in _STOP}
 
 
+# What kind of job an action is, so "loosened the soil" can't tick off "Check soil moisture"
+# just because both mention soil. First match wins, so specific kinds come before general ones.
+_ACTION_TYPES = [
+    ("skip_water", r"\bskip\w*\b.*\bwater|\bno water"),
+    ("less_water", r"\bcut back on water|\bless water|\breduc\w* water"),
+    ("deep_water", r"\bdeep\w*\b.*\bwater|\bwater\w*\b.*\bdeep|\bsoak"),
+    ("shade", r"\bshade"),
+    ("pest_treat", r"\bneem|\bspray"),
+    ("pest_check", r"\bpest|\baphid|\bbug|\binsect"),
+    ("soil_check", r"\bcheck\w*\b.*\bsoil|\bsoil moisture|\bfinger test"),
+    ("loosen_soil", r"\bloosen|\btopsoil|\bhoe\b|\btill\w*\b"),
+    ("prune", r"\bprun|\bpinch|\btrim|\bdeadhead|\byellow leaves|\bremov\w*\b.*\bleaves"),
+    ("harvest", r"\bharvest|\bpick\w*\b"),
+    ("feed", r"\bfeed|\bfed\b|\bfertili|\bcompost|\bmanure"),
+    ("mulch", r"\bmulch"),
+    ("repot", r"\brepot|\btransplant"),
+    ("weed", r"\bweed"),
+    ("support", r"\bstak\w*\b|\btie\b|\btied\b|\btying\b|\btrellis|\bsupport"),
+    ("water", r"\bwater"),
+]
+# Saying "watered" is close enough to tick off a deep watering, and the other way round.
+_SAME_JOB = {"water": {"water", "deep_water"}, "deep_water": {"water", "deep_water"}}
+
+
+def action_type(text: str) -> str | None:
+    lowered = text.lower()
+    return next((kind for kind, pattern in _ACTION_TYPES if re.search(pattern, lowered)), None)
+
+
+def _main_verb(text: str) -> str:
+    words = re.findall(r"[a-z]+", text.lower())
+    return _stem(words[0]).rstrip("e") if words else ""  # "rotate" and "rotated" -> "rotat"
+
+
 def matches_task(task: Task, done: Sequence[str], plants: Sequence[Plant] = (), default_plant: str = "") -> bool:
     """Does something the gardener said they did tick off this task?
 
     An item naming a plant ("watered chillies") only counts for that plant; other items count
-    for the note's main plant, or for every plant when the note isn't about one.
+    for the note's main plant, or for every plant when the note isn't about one. It also has to
+    be the same kind of job; for actions outside the known kinds, the main verb must match.
     """
-    action = task.action.lower()
-    plant_words = set().union(*(_content_words(p.name) for p in plants)) if plants else set()
+    task_type = action_type(task.action)
     for item in done:
         said = item.lower().strip()
         named = _mentioned(f" {said} ", plants)
@@ -189,9 +234,11 @@ def matches_task(task: Task, done: Sequence[str], plants: Sequence[Plant] = (), 
             continue
         if said in _ALL_DONE:
             return True
-        if "skip" in action and "skip" not in said:
-            continue  # "watered" should not tick off "Skip watering today"
-        if (_content_words(action) - plant_words) & (_content_words(said) - plant_words):
+        said_type = action_type(said)
+        if task_type and said_type:
+            if said_type in _SAME_JOB.get(task_type, {task_type}):
+                return True
+        elif task_type is None and said_type is None and _main_verb(task.action) == _main_verb(said):
             return True
     return False
 
