@@ -51,11 +51,13 @@ class OllamaClient:
 
 
 def parse_json_reply(text: str) -> dict:
-    """Parse a model reply, tolerating code fences or stray prose around the JSON object."""
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end < start:
+    """Parse the first JSON object in a model reply, ignoring code fences or prose around it."""
+    start = text.find("{")
+    if start == -1:
         raise ValueError("reply contains no JSON object")
-    return json.loads(text[start : end + 1])
+    # raw_decode reads exactly one complete object and stops, so trailing text can't corrupt it.
+    value, _end = json.JSONDecoder().raw_decode(text, start)
+    return value
 
 
 async def ask_validated(llm: LLM, messages: list[dict], schema: dict, validate: Callable[[dict], T]) -> T | None:

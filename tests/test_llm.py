@@ -44,6 +44,11 @@ def test_parse_json_reply_strips_fences_and_prose():
     assert parse_json_reply('Sure!\n```json\n{"a": 1}\n```') == {"a": 1}
 
 
+def test_parse_json_reply_ignores_text_after_the_object():
+    assert parse_json_reply('{"a": 1} and then {"b": 2}') == {"a": 1}
+    assert parse_json_reply('Here: {"days": [{"tasks": []}]} hope that helps }') == {"days": [{"tasks": []}]}
+
+
 def test_parse_json_reply_rejects_non_json():
     with pytest.raises(ValueError):
         parse_json_reply("no json here")
