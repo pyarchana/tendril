@@ -1,5 +1,6 @@
 import datetime as dt
 
+from app.models import LocationType, Plant
 from app.schemas import MAX_ACTION_WORDS, MAX_TASKS_PER_DAY, PlanDay, PlanTask
 from app.services.rules import (
     day_contexts,
@@ -150,6 +151,16 @@ def test_match_plant_handles_loose_names():
     assert match_plant("tulsi", garden).name == "Tulsi"
     assert match_plant("rose", garden) is None
     assert match_plant("  ", garden) is None
+
+
+def test_similar_plant_names_are_not_mixed_up():
+    garden = [
+        Plant(name="Tomato", location_type=LocationType.pot),
+        Plant(name="Tomatillo", location_type=LocationType.pot),
+    ]
+    assert match_plant("tomatillos", garden).name == "Tomatillo"
+    assert match_plant("tomatoes", garden).name == "Tomato"
+    assert match_plant("tomat", garden) is None  # could be either: ask, don't guess
 
 
 def test_serious_issue_detection():

@@ -101,7 +101,12 @@ def task_kind(action: str) -> str | None:
 
 
 def match_plant(name: str, plants: Sequence[Plant]) -> Plant | None:
-    """Find a plant by a name the model or a voice note used ("chilli plant" -> Chillies)."""
+    """Find a plant by a name the model or a voice note used ("chilli plant" -> Chillies).
+
+    Tries an exact name, then one name containing the other, then the first five letters.
+    If a step finds more than one plant (Tomato and Tomatillo), the answer is None: treatment
+    advice must never land on the wrong plant, so callers ask instead.
+    """
     wanted = name.strip().lower()
     if not wanted:
         return None
@@ -109,10 +114,18 @@ def match_plant(name: str, plants: Sequence[Plant]) -> Plant | None:
         if plant.name.lower() == wanted:
             return plant
     wanted_stem = wanted.rstrip("s")
-    for plant in plants:
+
+    def contains(plant: Plant) -> bool:
         stem = plant.name.lower().rstrip("s")
-        if stem in wanted_stem or wanted_stem in stem or stem.split()[0][:5] == wanted_stem.split()[0][:5]:
-            return plant
+        return stem in wanted_stem or wanted_stem in stem
+
+    def same_start(plant: Plant) -> bool:
+        return plant.name.lower().split()[0][:5] == wanted_stem.split()[0][:5]
+
+    for test in (contains, same_start):
+        found = [plant for plant in plants if test(plant)]
+        if found:
+            return found[0] if len(found) == 1 else None
     return None
 
 

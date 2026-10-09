@@ -96,7 +96,9 @@ def _normalise(facts: CheckInFacts, plants: Sequence[Plant]) -> CheckInFacts:
 
 
 def _mentioned(text: str, plants: Sequence[Plant]) -> list[str]:
-    return [p.name for p in plants if p.name.lower()[:5] in text]
+    """Plants named in the text. Whole names first, so "tomatillo" isn't also read as "tomato"."""
+    whole = [p.name for p in plants if p.name.lower().rstrip("s") in text]
+    return whole or [p.name for p in plants if p.name.lower()[:5] in text]
 
 
 def _sentences(text: str) -> list[str]:

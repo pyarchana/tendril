@@ -5,7 +5,7 @@ import httpx
 import respx
 from sqlalchemy import select
 
-from app.models import CheckIn, Task, TaskStatus, WeekPlan
+from app.models import CheckIn, LocationType, Plant, Task, TaskStatus, WeekPlan
 from app.schemas import FACTS_SCHEMA
 from app.services.checkin import matches_task, record_check_in, replan_after_check_in, rule_based_facts
 from app.services.plans import create_week_plan
@@ -168,6 +168,14 @@ def test_keyword_extraction_puts_the_problem_on_the_right_plant():
     reversed_order = rule_based_facts("The chillies look great and the tulsi is wilting", plants())
     assert reversed_order.plant == "Tulsi"
     assert rule_based_facts("Watered the tulsi and the chillies", plants()).plant == ""
+
+
+def test_keyword_extraction_tells_similar_plants_apart():
+    garden = [
+        Plant(name="Tomato", location_type=LocationType.pot),
+        Plant(name="Tomatillo", location_type=LocationType.pot),
+    ]
+    assert rule_based_facts("Aphids all over the tomatillo", garden).plant == "Tomatillo"
 
 
 def test_keyword_extraction_keeps_plain_notes_as_observations():
