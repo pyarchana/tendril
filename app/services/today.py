@@ -86,7 +86,7 @@ class TodayView:
                 for date, weather, day in self.upcoming
             ],
         }
-        return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:10]
+        return hashlib.sha1(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 
 async def load_today(session: AsyncSession, garden: Garden, now: dt.datetime) -> TodayView:

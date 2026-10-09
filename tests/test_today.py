@@ -231,3 +231,9 @@ async def test_no_backup_note_when_the_model_made_the_plan(api, session, clock):
     garden = await planned_garden(session)
     page = await api.get(f"/today/{garden.checkin_token}")
     assert "backup rules" not in page.text
+
+
+async def test_image_key_is_long_enough_to_never_collide(session, clock):
+    garden = await planned_garden(session)
+    view = await load_today(session, garden, at(9))
+    assert len(view.image_key) == 16
