@@ -1,8 +1,11 @@
+import asyncio
 import datetime as dt
+import json
 
 from sqlalchemy import func, select
 
-from app.models import CheckIn, Task, TaskStatus, WeekPlan
+from app.db import get_sessionmaker
+from app.models import CheckIn, Garden, Task, TaskStatus, WeekPlan
 from app.services.plans import create_week_plan, recent_facts, refresh_today, replan_rest_of_week
 from scripts.seed import seed
 from tests.factories import MILD, RAINY, START, WET, FakeLLM, forecast
@@ -156,3 +159,32 @@ async def test_refresh_falling_back_marks_the_plan_as_rules(session):
 
     await session.refresh(plan)
     assert plan.source == "rules"
+
+
+class SlowLLM:
+    """Answers after a short pause and records how many calls ever overlapped."""
+
+    def __init__(self, reply):
+        self.reply, self.active, self.peak = json.dumps(reply), 0, 0
+
+    async def chat_json(self, messages, schema=None):
+        self.active += 1
+        self.peak = max(self.peak, self.active)
+        await asyncio.sleep(0.05)
+        self.active -= 1
+        return self.reply
+
+
+async def test_plan_changes_for_one_garden_take_turns(session):
+    garden = await seed(session)
+    llm = SlowLLM(GOOD)
+
+    async def plan_in_its_own_session():
+        async with get_sessionmaker()() as other:
+            await create_week_plan(other, await other.get(Garden, garden.id), today=TODAY, forecast=MILD_3, llm=llm)
+
+    await asyncio.gather(plan_in_its_own_session(), plan_in_its_own_session())
+
+    assert llm.peak == 1
+    assert await session.scalar(select(func.count()).select_from(WeekPlan)) == 1
+    assert len(await tasks_on(session, TODAY)) == 2  # no duplicates

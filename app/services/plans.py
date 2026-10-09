@@ -1,7 +1,9 @@
 """Store plans and tasks: the weekly plan, the daily refresh, and re-planning the rest of the week."""
 
+import asyncio
 import datetime as dt
 import logging
+import weakref
 from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
@@ -18,6 +20,16 @@ from app.services.weather import Forecast, detect_change, fetch_forecast
 log = logging.getLogger(__name__)
 
 FACTS_LOOKBACK_DAYS = 14
+
+# One plan change per garden at a time: the 7 AM job, "Plan this week now" and a re-plan after a
+# voice note can overlap, and two writers at once would duplicate tasks. Locks belong to their
+# event loop, so they're kept per loop.
+_locks: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[int, asyncio.Lock]]" = weakref.WeakKeyDictionary()
+
+
+def garden_lock(garden_id: int) -> asyncio.Lock:
+    per_loop = _locks.setdefault(asyncio.get_running_loop(), {})
+    return per_loop.setdefault(garden_id, asyncio.Lock())
 
 
 def garden_now(garden: Garden) -> dt.datetime:
@@ -77,7 +89,7 @@ async def _replace_tasks(session: AsyncSession, garden: Garden, days: Sequence[P
             session.add(Task(plant_id=plant.id, date=day.date, action=planned.action, reason=planned.reason))
 
 
-async def create_week_plan(
+async def _create_week_plan(
     session: AsyncSession,
     garden: Garden,
     *,
@@ -104,7 +116,7 @@ async def create_week_plan(
     return plan
 
 
-async def refresh_today(
+async def _refresh_today(
     session: AsyncSession,
     garden: Garden,
     *,
@@ -119,7 +131,7 @@ async def refresh_today(
     today = today or garden_today(garden)
     plan = await current_week_plan(session, garden, today)
     if plan is None:
-        await create_week_plan(session, garden, today=today, forecast=forecast, llm=llm)
+        await _create_week_plan(session, garden, today=today, forecast=forecast, llm=llm)
         return ["new plan"]
 
     forecast = forecast or await fetch_forecast(garden.lat, garden.lon, garden.timezone)
@@ -150,7 +162,7 @@ async def refresh_today(
     return changes
 
 
-async def replan_rest_of_week(
+async def _replan_rest_of_week(
     session: AsyncSession,
     garden: Garden,
     *,
@@ -162,7 +174,7 @@ async def replan_rest_of_week(
     today = today or garden_today(garden)
     plan = await current_week_plan(session, garden, today)
     if plan is None:
-        return await create_week_plan(session, garden, today=today, forecast=forecast, llm=llm)
+        return await _create_week_plan(session, garden, today=today, forecast=forecast, llm=llm)
 
     forecast = forecast or await fetch_forecast(garden.lat, garden.lon, garden.timezone)
     week_end = plan.week_start + dt.timedelta(days=6)
@@ -178,3 +190,39 @@ async def replan_rest_of_week(
     await session.commit()
     log.info("Re-planned %s from %s by %s", garden.name, today, result.source)
     return plan
+
+
+async def create_week_plan(
+    session: AsyncSession,
+    garden: Garden,
+    *,
+    today: dt.date | None = None,
+    forecast: Forecast | None = None,
+    llm: LLM | None = None,
+) -> WeekPlan:
+    async with garden_lock(garden.id):
+        return await _create_week_plan(session, garden, today=today, forecast=forecast, llm=llm)
+
+
+async def refresh_today(
+    session: AsyncSession,
+    garden: Garden,
+    *,
+    today: dt.date | None = None,
+    forecast: Forecast | None = None,
+    llm: LLM | None = None,
+) -> list[str]:
+    async with garden_lock(garden.id):
+        return await _refresh_today(session, garden, today=today, forecast=forecast, llm=llm)
+
+
+async def replan_rest_of_week(
+    session: AsyncSession,
+    garden: Garden,
+    *,
+    today: dt.date | None = None,
+    forecast: Forecast | None = None,
+    llm: LLM | None = None,
+) -> WeekPlan:
+    async with garden_lock(garden.id):
+        return await _replan_rest_of_week(session, garden, today=today, forecast=forecast, llm=llm)
