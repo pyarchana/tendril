@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.db import get_sessionmaker
 from app.models import Garden
+from app.services.checkin import prune_recordings
 from app.services.llm import LLM
 from app.services.plans import create_week_plan, current_week_plan, garden_now, refresh_today
 from app.services.today import ensure_plan_image, load_today
@@ -79,6 +80,29 @@ async def sync_jobs(scheduler: AsyncIOScheduler) -> int:
     for garden in gardens:
         schedule_garden(scheduler, garden)
     return len(gardens)
+
+
+PRUNE_JOB_ID = "prune-recordings"
+
+
+async def prune_recordings_job() -> int:
+    async with get_sessionmaker()() as session:
+        removed = await prune_recordings(session, get_settings().audio_retention_days)
+    if removed:
+        log.info("Deleted %d old voice recording(s); transcripts kept", removed)
+    return removed
+
+
+def schedule_housekeeping(scheduler: AsyncIOScheduler) -> None:
+    """Delete old recordings every night at 3:30, and once right away at startup."""
+    scheduler.add_job(
+        prune_recordings_job,
+        CronTrigger(hour=3, minute=30),
+        id=PRUNE_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        next_run_time=dt.datetime.now(dt.timezone.utc),
+    )
 
 
 def create_scheduler() -> AsyncIOScheduler:

@@ -1,4 +1,5 @@
 import datetime as dt
+import os
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -7,7 +8,13 @@ from sqlalchemy import select
 
 from app.models import CheckIn, LocationType, Plant, Task, TaskStatus, WeekPlan
 from app.schemas import FACTS_SCHEMA
-from app.services.checkin import matches_task, record_check_in, replan_after_check_in, rule_based_facts
+from app.services.checkin import (
+    matches_task,
+    prune_recordings,
+    record_check_in,
+    replan_after_check_in,
+    rule_based_facts,
+)
 from app.services.plans import create_week_plan
 from app.services.weather import FORECAST_URL
 from scripts.seed import seed
@@ -208,3 +215,38 @@ async def test_background_replan_rewrites_the_rest_of_the_week(session):
     plan = await session.scalar(select(WeekPlan).execution_options(populate_existing=True))
     assert plan.days[0]["tasks"][0]["action"] == "Spray neem oil on leaves"  # rules put treatment first
     assert plan.days[1]["tasks"][0]["action"] == "Check leaves for aphids"
+
+
+async def test_old_recordings_are_deleted_but_transcripts_stay(session, isolated_settings):
+    garden = await seed(session)
+    audio = isolated_settings.audio_dir
+    now = dt.datetime(2026, 10, 20, 12, tzinfo=dt.timezone.utc)
+    ten_days_ago, yesterday = now - dt.timedelta(days=10), now - dt.timedelta(days=1)
+    files = {}
+    for name, when in [("old.webm", ten_days_ago), ("new.webm", yesterday),
+                       ("stray-old.webm", ten_days_ago), ("stray-new.webm", yesterday)]:
+        files[name] = audio / name
+        files[name].write_bytes(b"opus")
+        os.utime(files[name], (when.timestamp(), when.timestamp()))
+    session.add_all([
+        CheckIn(garden_id=garden.id, date=ten_days_ago.date(), audio_path=str(files["old.webm"]),
+                transcript="old note", created_at=ten_days_ago),
+        CheckIn(garden_id=garden.id, date=yesterday.date(), audio_path=str(files["new.webm"]),
+                transcript="new note", created_at=yesterday),
+    ])
+    await session.commit()
+
+    removed = await prune_recordings(session, 7, now=now)
+
+    assert removed == 2
+    assert sorted(path.name for path in audio.iterdir()) == ["new.webm", "stray-new.webm"]
+    rows = await session.scalars(select(CheckIn).execution_options(populate_existing=True))
+    assert {c.transcript: c.audio_path for c in rows} == {"old note": None, "new note": str(files["new.webm"])}
+
+
+async def test_zero_retention_keeps_every_recording(session, isolated_settings):
+    stray = isolated_settings.audio_dir / "stray.webm"
+    stray.write_bytes(b"opus")
+    os.utime(stray, (0, 0))
+    assert await prune_recordings(session, 0) == 0
+    assert stray.exists()

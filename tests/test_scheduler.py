@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.models import WeekPlan
-from app.scheduler import create_scheduler, job_id, morning_job, sync_jobs
+from app.scheduler import PRUNE_JOB_ID, create_scheduler, job_id, morning_job, sync_jobs
 from app.services.plans import create_week_plan
 from app.services.weather import FORECAST_URL
 from scripts.seed import seed
@@ -99,4 +99,5 @@ def test_app_starts_and_stops_the_scheduler(monkeypatch):
     app = create_app()
     with TestClient(app):
         assert app.state.scheduler.running
+        assert app.state.scheduler.get_job(PRUNE_JOB_ID) is not None
     assert not app.state.scheduler.running

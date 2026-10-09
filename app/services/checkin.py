@@ -5,10 +5,12 @@ import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.db import get_sessionmaker
 from app.models import CheckIn, Garden, Plant, Task, TaskStatus
 from app.schemas import FACTS_SCHEMA, CheckInFacts
@@ -278,6 +280,38 @@ async def record_check_in(
     serious = serious_issues(facts.health_flags)
     log.info("Check-in for %s: %d task(s) done, serious=%s, via %s", garden.name, len(marked), serious, source)
     return CheckInResult(check_in=check_in, facts=facts, marked=marked, serious=serious, source=source)
+
+
+async def prune_recordings(session: AsyncSession, older_than_days: int, now: dt.datetime | None = None) -> int:
+    """Delete voice recordings older than the retention window. Transcripts and facts stay.
+
+    Also removes stray files that never became a check-in (a failed transcription, for example).
+    Returns how many recordings were deleted.
+    """
+    if older_than_days <= 0:
+        return 0
+    cutoff = (now or dt.datetime.now(dt.timezone.utc)) - dt.timedelta(days=older_than_days)
+    removed = 0
+    old = await session.scalars(
+        select(CheckIn).where(CheckIn.audio_path.is_not(None), CheckIn.created_at < cutoff)
+    )
+    for check_in in old:
+        Path(check_in.audio_path).unlink(missing_ok=True)
+        check_in.audio_path = None
+        removed += 1
+    await session.commit()
+
+    audio_dir = get_settings().audio_dir
+    if audio_dir.is_dir():
+        still_used = set(await session.scalars(select(CheckIn.audio_path).where(CheckIn.audio_path.is_not(None))))
+        for path in audio_dir.iterdir():
+            if not path.is_file() or str(path) in still_used:
+                continue
+            modified = dt.datetime.fromtimestamp(path.stat().st_mtime, dt.timezone.utc)
+            if modified < cutoff:
+                path.unlink(missing_ok=True)
+                removed += 1
+    return removed
 
 
 async def replan_after_check_in(garden_id: int, today: dt.date, llm: LLM | None = None) -> None:

@@ -11,7 +11,7 @@ from app.db import dispose_engine, init_db
 from app.deps import preload_whisper
 from app.ratelimit import RateLimiter
 from app.routers import checkin, setup, tasks, today
-from app.scheduler import create_scheduler, sync_jobs
+from app.scheduler import create_scheduler, schedule_housekeeping, sync_jobs
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 log = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
         app.state.scheduler = create_scheduler()
         app.state.scheduler.start()
         count = await sync_jobs(app.state.scheduler)
+        schedule_housekeeping(app.state.scheduler)
         log.info("Scheduler started for %d garden(s), mornings at %d:00", count, settings.morning_hour)
     if settings.whisper_preload:
         preload_whisper()
